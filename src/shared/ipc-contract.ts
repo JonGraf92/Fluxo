@@ -301,7 +301,7 @@ export interface FinancingPlanDto {
   firstDueDate: string;
   paymentResourceId: string;
   responsiblePersonId: string;
-  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DELETED';
   installments: FinancingInstallmentDto[];
 }
 
