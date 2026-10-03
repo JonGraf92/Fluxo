@@ -42,7 +42,13 @@ export interface ResourceRepository {
   findById(id: string): Promise<Resource | null>;
   listByNucleus(nucleusId: string, options?: { includeArchived?: boolean }): Promise<Resource[]>;
   updateNameAndArchived(resourceId: string, name: string, archived: boolean, updatedAt: Date): Promise<void>;
-  updateProperties(resourceId: string, name: string, initialBalanceCents: number, liquidityDays: number | null, statementClosingDay: number | null, updatedAt: Date): Promise<void>;
+  /**
+   * Atualiza apenas os campos EDITAVEIS de um recurso. `initial_balance_cents` NAO esta
+   * aqui de proposito: o saldo inicial e gravado uma unica vez em `create` e nunca mais
+   * alterado (ADR D-020). A ausencia do parametro e o que torna a violacao impossivel —
+   * nao basta documentar a regra. Correcao posterior de saldo = CreateAdjustment (D-019).
+   */
+  updateProperties(resourceId: string, name: string, liquidityDays: number | null, statementClosingDay: number | null, updatedAt: Date): Promise<void>;
 }
 
 export interface ResourceOwnershipRepository {

@@ -81,7 +81,12 @@ export type CreateResourcePayload = z.infer<typeof CreateResourceSchema>;
 
 export const ListByNucleusSchema = z.object({ nucleusId: z.string().uuid() }).strict();
 export const ListResourcesSchema = z.object({ nucleusId: z.string().uuid(), includeArchived: z.boolean().optional() }).strict();
-export const UpdateResourceSchema = z.object({ nucleusId: z.string().uuid(), resourceId: z.string().uuid(), name: z.string().trim().min(1).max(120), initialBalanceCents: z.number().int().safe().optional(), liquidityDays: z.number().int().min(0).max(36500).nullable().optional(), statementClosingDay: z.number().int().min(1).max(31).nullable().optional() }).strict();
+// `initialBalanceCents` NAO faz parte deste schema de proposito (ADR D-020): o saldo
+// inicial e imutavel apos a criacao do recurso. Como o schema e `.strict()`, qualquer
+// payload que ainda envie o campo e REJEITADO com INVALID_PAYLOAD — o renderer nao
+// consegue reescrever saldo nem por engano nem por adulteracao. Correcao de saldo
+// posterior acontece apenas via ajuste (ajustes:create).
+export const UpdateResourceSchema = z.object({ nucleusId: z.string().uuid(), resourceId: z.string().uuid(), name: z.string().trim().min(1).max(120), liquidityDays: z.number().int().min(0).max(36500).nullable().optional(), statementClosingDay: z.number().int().min(1).max(31).nullable().optional() }).strict();
 export type UpdateResourcePayload = z.infer<typeof UpdateResourceSchema>;
 export const SetResourceArchivedSchema = z.object({ nucleusId: z.string().uuid(), resourceId: z.string().uuid(), archived: z.boolean() }).strict();
 export type SetResourceArchivedPayload = z.infer<typeof SetResourceArchivedSchema>;

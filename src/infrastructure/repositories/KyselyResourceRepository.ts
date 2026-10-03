@@ -36,8 +36,12 @@ export class KyselyResourceRepository implements ResourceRepository {
     await this.db.updateTable('resources').set({ name, archived: toDbBool(archived), updated_at: toIso(updatedAt) }).where('id', '=', resourceId).execute();
   }
 
-  async updateProperties(resourceId: string, name: string, initialBalanceCents: number, liquidityDays: number | null, statementClosingDay: number | null, updatedAt: Date): Promise<void> {
-    await this.db.updateTable('resources').set({ name, initial_balance_cents: initialBalanceCents, liquidity_days: liquidityDays, statement_closing_day: statementClosingDay, updated_at: toIso(updatedAt) }).where('id', '=', resourceId).execute();
+  /**
+   * Nao inclui `initial_balance_cents` no SET — por decisao, nao por esquecimento.
+   * O saldo inicial e imutavel apos a criacao (ADR D-020); a coluna nunca e tocada aqui.
+   */
+  async updateProperties(resourceId: string, name: string, liquidityDays: number | null, statementClosingDay: number | null, updatedAt: Date): Promise<void> {
+    await this.db.updateTable('resources').set({ name, liquidity_days: liquidityDays, statement_closing_day: statementClosingDay, updated_at: toIso(updatedAt) }).where('id', '=', resourceId).execute();
   }
 
   async listByNucleus(nucleusId: string, options?: { includeArchived?: boolean }): Promise<Resource[]> {

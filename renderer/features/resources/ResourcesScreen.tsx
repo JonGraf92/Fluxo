@@ -128,16 +128,14 @@ function NewResourceModal({
 function EditResourceModal({ session, resource, onClose, onSaved }: { session: AppSession; resource: ResourceDto; onClose: () => void; onSaved: () => void }) {
   const { show } = useToast();
   const [name, setName] = React.useState(resource.name);
-  const [initialBalanceCents, setInitialBalanceCents] = React.useState<number | null>(resource.initialBalanceCents);
   const [liquidityDays, setLiquidityDays] = React.useState(resource.liquidityDays == null ? '' : String(resource.liquidityDays));
   const [statementClosingDay, setStatementClosingDay] = React.useState(resource.statementClosingDay == null ? '' : String(resource.statementClosingDay));
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [confirmBalanceChange, setConfirmBalanceChange] = React.useState(false);
   async function saveChanges() {
     setSaving(true);
     try {
-      await api().resources.update({ nucleusId: session.nucleusId, resourceId: resource.id, name: name.trim(), initialBalanceCents: initialBalanceCents!, liquidityDays: resource.type === 'APPLICATION' ? Number(liquidityDays) : null, statementClosingDay: resource.type === 'CREDIT_CARD' ? Number(statementClosingDay) : null });
+      await api().resources.update({ nucleusId: session.nucleusId, resourceId: resource.id, name: name.trim(), liquidityDays: resource.type === 'APPLICATION' ? Number(liquidityDays) : null, statementClosingDay: resource.type === 'CREDIT_CARD' ? Number(statementClosingDay) : null });
       show('Recurso atualizado.');
       onSaved();
       onClose();
@@ -146,22 +144,25 @@ function EditResourceModal({ session, resource, onClose, onSaved }: { session: A
   }
   async function submit() {
     if (!name.trim()) return setError('Informe o nome do recurso.');
-    if (initialBalanceCents === null) return setError('Informe o saldo inicial.');
     if (resource.type === 'APPLICATION' && (!/^\d+$/.test(liquidityDays) || Number(liquidityDays) > 36500)) return setError('Informe um prazo inteiro entre 0 e 36.500 dias.');
     if (resource.type === 'CREDIT_CARD' && (!/^\d+$/.test(statementClosingDay) || Number(statementClosingDay) < 1 || Number(statementClosingDay) > 31)) return setError('Informe o dia de fechamento entre 1 e 31.');
-    if (initialBalanceCents !== resource.initialBalanceCents) { setConfirmBalanceChange(true); return; }
     await saveChanges();
   }
   return <Modal title="Editar recurso" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button></>}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Input label="Nome" value={name} onChange={(event) => setName(event.target.value)} autoFocus />
-      <CurrencyInput label="Saldo inicial" valueCents={initialBalanceCents} onChangeCents={setInitialBalanceCents} hint="O saldo atual será recalculado com base neste valor e no histórico de movimentações." />
       {resource.type === 'CREDIT_CARD' && <Input label="Dia de fechamento da fatura (corte)" type="number" min={1} max={31} value={statementClosingDay} onChange={(event) => setStatementClosingDay(event.target.value)} hint="Compras após esse dia entram no ciclo seguinte." />}
       {resource.type === 'APPLICATION' && <Input label="Prazo de liquidez (dias)" type="number" min={0} max={36500} step={1} value={liquidityDays} onChange={(event) => setLiquidityDays(event.target.value)} hint="Use 0 para liquidez imediata. O prazo ainda nao altera automaticamente o saldo." />}
-      <p style={{ margin: 0, color: 'var(--color-ink-muted)', fontSize: 12 }}>A alteração do saldo inicial será registrada no histórico do núcleo.</p>
+      {/* O saldo inicial NAO e editavel (ADR D-020): ele e definido na criacao do recurso e
+          nunca muda. Correcoes acontecem por Ajuste, que gera movimentacao e fica visivel
+          no historico. Aqui o valor e apenas exibido, com o caminho correto indicado. */}
+      <div>
+        <span className="field-label">Saldo inicial</span>
+        <div className="tabular" style={{ padding: '8px 0', color: 'var(--color-ink-muted)' }}>{formatCentsToBRL(resource.initialBalanceCents)}</div>
+        <span className="field-hint">O saldo inicial é definido na criação do recurso e não pode ser alterado, para preservar a integridade do histórico. Para corrigir o saldo, registre um ajuste.</span>
+      </div>
       {error ? <span className="field-error">{error}</span> : null}
     </div>
-    {confirmBalanceChange && <Modal title="Confirmar saldo inicial" onClose={() => setConfirmBalanceChange(false)} footer={<><Button variant="secondary" onClick={() => setConfirmBalanceChange(false)}>Voltar</Button><Button onClick={() => { setConfirmBalanceChange(false); void saveChanges(); }} disabled={saving}>Confirmar alteração</Button></>}><p>Deseja alterar o saldo inicial de {formatCentsToBRL(resource.initialBalanceCents)} para {formatCentsToBRL(initialBalanceCents ?? 0)}?</p><p style={{ marginBottom: 0, color: 'var(--color-ink-muted)', fontSize: 13 }}>O saldo atual será recalculado e a alteração ficará registrada no histórico.</p></Modal>}
   </Modal>;
 }
 
