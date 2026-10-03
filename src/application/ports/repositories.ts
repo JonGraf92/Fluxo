@@ -117,6 +117,13 @@ export interface CreditInvoiceRepository {
   listByNucleus(nucleusId: string): Promise<CreditInvoiceRecord[]>;
   create(record: CreditInvoiceRecord): Promise<void>;
   update(record: CreditInvoiceRecord): Promise<void>;
+  /**
+   * Quita a fatura de forma condicional (so de CLOSED para PAID) e devolve o numero de
+   * linhas afetadas. A condicao vive no proprio UPDATE, o que elimina a janela TOCTOU entre
+   * ler o status e gravar. O chamador DEVE conferir: 0 linhas = outra operacao quitou a
+   * fatura primeiro, e o pagamento nao pode seguir.
+   */
+  markPaid(invoiceId: string, paidAt: string, paymentResourceId: string, paymentMovementId: string): Promise<number>;
 }
 
 export interface FinancingRepository {
@@ -133,5 +140,6 @@ export interface FinancingRepository {
   markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<number>;
   setPlanStatus(planId: string, status: FinancingPlan['status']): Promise<void>;
   updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents'>): Promise<void>;
-  deletePlan(planId: string): Promise<void>;
+  // Sem `deletePlan`: a exclusao de financiamento e soft delete via setPlanStatus(id, 'DELETED').
+  // Remover a operacao de DELETE fisico e o que impede o apagamento de historico ja confirmado.
 }

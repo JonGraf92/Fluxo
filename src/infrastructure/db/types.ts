@@ -80,6 +80,8 @@ export interface MovementsTable {
   responsible_person_id: string | null;
   payment_method: string | null;
   invoice_due_date: string | null;
+  /** Cartao cuja fatura este movimento quitou. Nulo quando nao e pagamento de fatura. */
+  card_invoice_resource_id: string | null;
 }
 
 export interface MovementLegsTable {

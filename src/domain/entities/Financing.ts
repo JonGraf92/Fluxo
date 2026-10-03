@@ -32,7 +32,11 @@ export interface FinancingPlan {
   readonly paymentResourceId: string;
   readonly responsiblePersonId: string;
   readonly createdByPersonId: string;
-  readonly status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  /**
+   * DELETED e soft delete: o plano permanece no banco para auditoria em vez de ser removido
+   * fisicamente. Historico confirmado nunca e apagado (mesmo principio do ADR D-010).
+   */
+  readonly status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DELETED';
   readonly createdAt: Date;
 }
 

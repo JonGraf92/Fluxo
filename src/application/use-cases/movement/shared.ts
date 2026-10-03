@@ -19,6 +19,8 @@ export interface BuildMovementInput {
   responsiblePersonId?: string;
   paymentMethod?: PaymentMethod | null;
   invoiceDueDate?: string | null;
+  /** Preenchido apenas em pagamento de fatura; e a identificacao estrutural do cartao. */
+  cardInvoiceResourceId?: string | null;
   clientOperationId: string;
 }
 
@@ -40,6 +42,7 @@ export function buildMovement(input: BuildMovementInput): Movement {
     responsiblePersonId: input.responsiblePersonId ?? input.createdByPersonId,
     paymentMethod: input.paymentMethod ?? null,
     invoiceDueDate: input.invoiceDueDate ?? null,
+    cardInvoiceResourceId: input.cardInvoiceResourceId ?? null,
     clientOperationId: input.clientOperationId,
     createdAt: now,
     updatedAt: now,

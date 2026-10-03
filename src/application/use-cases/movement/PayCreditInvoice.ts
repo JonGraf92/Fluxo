@@ -40,8 +40,14 @@ export class PayCreditInvoice {
       let amountCents = 0;
       for (const leg of legs) {
         const movement = byId.get(leg.movementId);
+        // Compras no cartao entram como EXPENSE com paymentMethod CREDIT.
         if (movement?.type === 'EXPENSE' && movement.paymentMethod === 'CREDIT' && movement.invoiceDueDate === input.invoiceDueDate && leg.resourceId === card.id) amountCents += leg.amountCents;
-        if (movement?.type === 'TRANSFER' && movement.description.startsWith('Pagamento de fatura:') && movement.invoiceDueDate === input.invoiceDueDate && cardIds.has(leg.resourceId) && leg.resourceId === card.id) amountCents += leg.amountCents;
+        // Pagamentos anteriores desta fatura sao identificados pela REFERENCIA ESTRUTURAL
+        // (cardInvoiceResourceId), nunca por texto. A versao anterior usava
+        // `description.startsWith('Pagamento de fatura:')`, o que quebrava em silencio ao
+        // traduzir/renomear a string ou se o usuario editasse a descricao: o pagamento
+        // deixava de ser reconhecido e a fatura parecia continuar em aberto.
+        if (movement?.type === 'TRANSFER' && movement.cardInvoiceResourceId === card.id && movement.invoiceDueDate === input.invoiceDueDate && cardIds.has(leg.resourceId) && leg.resourceId === card.id) amountCents += leg.amountCents;
       }
       if (amountCents <= 0) throw new DomainError('INVOICE_ALREADY_PAID', 'Esta fatura não tem saldo pendente.');
       const balanceLegs = await repos.movements.listLegsForBalance(input.nucleusId);
@@ -53,13 +59,24 @@ export class PayCreditInvoice {
       const movement = buildMovement({
         nucleusId: input.nucleusId, type: 'TRANSFER', status: 'CONFIRMED', date: input.date,
         description: 'Pagamento de fatura: ' + card.name, categoryId: null, createdByPersonId: input.createdByPersonId,
-        paymentMethod: null, invoiceDueDate: input.invoiceDueDate, clientOperationId: input.clientOperationId,
+        paymentMethod: null, invoiceDueDate: input.invoiceDueDate,
+        cardInvoiceResourceId: card.id, clientOperationId: input.clientOperationId,
       });
       await repos.movements.createWithLegs(movement, buildLegs(movement.id, [
         { resourceId: source.id, amountCents: amount.negate().toCents() },
         { resourceId: card.id, amountCents: amount.negate().toCents() },
       ]));
-      await repos.creditInvoices.update({ ...invoice, status: 'PAID', paidAt: input.date, paymentResourceId: source.id, paymentMovementId: movement.id });
+      // Quitacao CONDICIONAL: o `where status = 'CLOSED'` vive dentro do UPDATE, entao duas
+      // operacoes concorrentes com clientOperationId distintos nao conseguem debitar o caixa
+      // duas vezes. Antes, a leitura do status (linha 30) e a escrita ficavam separadas no
+      // tempo e ambas passavam pela validacao — o caixa saia debitado em dobro.
+      const invoicesUpdated = await repos.creditInvoices.markPaid(invoice.id, input.date, source.id, movement.id);
+      if (invoicesUpdated !== 1) {
+        throw new DomainError(
+          'INVOICE_STATE_CHANGED',
+          'Esta fatura foi paga por outra operacao enquanto este pagamento era processado. Nenhum valor foi debitado; atualize a tela.',
+        );
+      }
       await repos.auditLogs.record(buildAuditLog({ entityType: 'Movement', entityId: movement.id, action: 'PAY_CREDIT_INVOICE', actorPersonId: input.createdByPersonId, nucleusId: input.nucleusId, after: { cardResourceId: card.id, paymentResourceId: source.id, invoiceDueDate: input.invoiceDueDate, amountCents } }));
       return { movementId: movement.id, wasAlreadyCreated: false, amountCents };
     });

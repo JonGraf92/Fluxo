@@ -18,6 +18,13 @@ export interface Movement {
   readonly responsiblePersonId: string;
   readonly paymentMethod: PaymentMethod | null;
   readonly invoiceDueDate: string | null;
+  /**
+   * Cartao cuja fatura este movimento quitou. E a identificacao ESTRUTURAL do pagamento de
+   * fatura — substitui a heuristica por texto na descricao (`description.startsWith(...)`),
+   * que quebrava ao renomear/traduzir o texto ou ao usuario editar a descricao.
+   * Nulo em todo movimento que nao seja pagamento de fatura.
+   */
+  readonly cardInvoiceResourceId: string | null;
   readonly clientOperationId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;

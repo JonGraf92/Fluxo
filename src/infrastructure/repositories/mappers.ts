@@ -118,6 +118,7 @@ export function mapMovement(row: MovementsTable): Movement {
     responsiblePersonId: row.responsible_person_id ?? row.created_by_person_id,
     paymentMethod: (row.payment_method as import('../../domain/value-objects/enums').PaymentMethod | null) ?? null,
     invoiceDueDate: row.invoice_due_date ?? null,
+    cardInvoiceResourceId: row.card_invoice_resource_id ?? null,
     clientOperationId: row.client_operation_id,
     createdAt: fromIso(row.created_at),
     updatedAt: fromIso(row.updated_at),

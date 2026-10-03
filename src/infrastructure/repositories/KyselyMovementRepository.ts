@@ -31,6 +31,7 @@ export class KyselyMovementRepository implements MovementRepository {
         responsible_person_id: movement.responsiblePersonId,
         payment_method: movement.paymentMethod,
         invoice_due_date: movement.invoiceDueDate,
+        card_invoice_resource_id: movement.cardInvoiceResourceId,
         client_operation_id: movement.clientOperationId,
         created_at: toIso(movement.createdAt),
         updated_at: toIso(movement.updatedAt),

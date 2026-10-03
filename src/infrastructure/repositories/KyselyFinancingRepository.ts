@@ -55,7 +55,9 @@ export class KyselyFinancingRepository implements FinancingRepository {
   }
 
   async listByNucleus(nucleusId: string): Promise<FinancingPlanWithInstallments[]> {
-    const plans = await this.db.selectFrom('financing_plans').selectAll().where('nucleus_id', '=', nucleusId).orderBy('first_due_date').execute();
+    // Planos com soft delete (DELETED) ficam fora da listagem normal, mas continuam no banco
+    // e recuperaveis por findPlanById para auditoria.
+    const plans = await this.db.selectFrom('financing_plans').selectAll().where('nucleus_id', '=', nucleusId).where('status', '!=', 'DELETED').orderBy('first_due_date').execute();
     if (!plans.length) return [];
     const installments = await this.db.selectFrom('financing_installments').selectAll().where('plan_id', 'in', plans.map((plan) => plan.id)).orderBy('due_date').execute();
     const byPlan = new Map<string, FinancingInstallment[]>();
@@ -100,10 +102,9 @@ export class KyselyFinancingRepository implements FinancingRepository {
       .where('plan_id', '=', planId).where('status', '=', 'PENDING').execute();
   }
 
-  async deletePlan(planId: string): Promise<void> {
-    await this.db.deleteFrom('financing_installments').where('plan_id', '=', planId).execute();
-    await this.db.deleteFrom('financing_plans').where('id', '=', planId).execute();
-  }
+  // O metodo `deletePlan` foi REMOVIDO de proposito: ele fazia DELETE fisico em
+  // financing_plans e financing_installments, apagando historico de parcelas ja pagas.
+  // A exclusao de um financiamento agora e soft delete via setPlanStatus(id, 'DELETED').
 
   private mapPlan(row: Database['financing_plans']): FinancingPlan {
     return {

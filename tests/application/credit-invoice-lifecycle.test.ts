@@ -5,6 +5,7 @@ import { ListOpenCreditInvoices } from '../../src/application/use-cases/movement
 import { PayCreditInvoice } from '../../src/application/use-cases/movement/PayCreditInvoice';
 import { GetDashboardSummary } from '../../src/application/use-cases/balance/GetDashboardSummary';
 import { CreateResource } from '../../src/application/use-cases/resource/CreateResource';
+import { calculateResourceBalance } from '../../src/domain/services/BalanceCalculator';
 import { createTestDb, TestDb } from '../testDb';
 import { seedPersonAndNucleus, seedResource } from '../seed';
 
@@ -60,6 +61,63 @@ describe('Ciclo da fatura — compras, consolidacao e pagamento', () => {
     const invoices = await new ListOpenCreditInvoices(db.repos).execute(nucleus.id);
     expect(invoices.find((invoice) => invoice.cardResourceId === card.resource.id)?.status).toBe('CLOSED');
     expect((await new GetDashboardSummary(db.repos).execute({ nucleusId: nucleus.id, periodDateFrom: '2026-09-01', periodDateTo: '2026-10-31' })).moneyTotalCents).toBe(1000);
+  });
+
+  it('nao debita o caixa duas vezes quando a fatura e paga duas vezes (TOCTOU)', async () => {
+    db = await createTestDb();
+    const { person, nucleus, categories } = await seedPersonAndNucleus(db);
+    const account = await seedResource(db, nucleus.id, person.id, { name: 'Conta unica', initialBalanceCents: 10000 });
+    const card = await new CreateResource(db.uow).execute({ nucleusId: nucleus.id, name: 'Cartao TOCTOU', type: 'CREDIT_CARD', statementDueDay: 10, statementClosingDay: 5, initialBalanceCents: 0, ownerPersonId: person.id });
+    const category = categories.find((item) => item.kind === 'EXPENSE')!;
+    const dueDate = '2026-10-10';
+    await new CreateExpense(db.uow).execute({ nucleusId: nucleus.id, resourceId: card.resource.id, categoryId: category.id, amountCents: 2500, description: 'Compra', date: '2026-09-27', createdByPersonId: person.id, paymentMethod: 'CREDIT', invoiceDueDate: dueDate, clientOperationId: 'toctou-purchase' });
+    await new CloseCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate });
+
+    const base = { nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate, paymentResourceId: account.id, date: dueDate, createdByPersonId: person.id };
+    const pay = new PayCreditInvoice(db.uow);
+    // Dois clientOperationId DISTINTOS: a idempotencia nao protege este caso, porque sao
+    // operacoes diferentes do ponto de vista do app (ex.: dois toques, duas abas).
+    const [first, second] = await Promise.allSettled([
+      pay.execute({ ...base, clientOperationId: 'toctou-pay-a' }),
+      pay.execute({ ...base, clientOperationId: 'toctou-pay-b' }),
+    ]);
+
+    // Uma tem de vencer e a outra tem de ser recusada — nunca as duas.
+    const fulfilled = [first, second].filter((result) => result.status === 'fulfilled');
+    expect(fulfilled).toHaveLength(1);
+
+    // E o caixa nao pode ter sido debitado duas vezes: 10000 - 2500 = 7500.
+    const balance = await db.repos.movements.listLegsForBalance(nucleus.id);
+    const accountBalance = calculateResourceBalance(account.id, 10000, balance).toCents();
+    expect(accountBalance).toBe(7500);
+    expect((await db.repos.movements.list({ nucleusId: nucleus.id })).filter((movement) => movement.type === 'TRANSFER')).toHaveLength(1);
+  });
+
+  it('reconhece pagamento anterior por referencia estrutural, nao pelo texto da descricao', async () => {
+    db = await createTestDb();
+    const { person, nucleus, categories } = await seedPersonAndNucleus(db);
+    const account = await seedResource(db, nucleus.id, person.id, { name: 'Conta', initialBalanceCents: 10000 });
+    const card = await new CreateResource(db.uow).execute({ nucleusId: nucleus.id, name: 'Cartao texto', type: 'CREDIT_CARD', statementDueDay: 10, statementClosingDay: 5, initialBalanceCents: 0, ownerPersonId: person.id });
+    const category = categories.find((item) => item.kind === 'EXPENSE')!;
+    const dueDate = '2026-10-10';
+    await new CreateExpense(db.uow).execute({ nucleusId: nucleus.id, resourceId: card.resource.id, categoryId: category.id, amountCents: 2500, description: 'Compra', date: '2026-09-27', createdByPersonId: person.id, paymentMethod: 'CREDIT', invoiceDueDate: dueDate, clientOperationId: 'struct-purchase' });
+    await new CloseCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate });
+
+    const payment = await new PayCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate, paymentResourceId: account.id, date: dueDate, createdByPersonId: person.id, clientOperationId: 'struct-pay' });
+    const movement = await db.repos.movements.findById(payment.movementId);
+    expect(movement?.cardInvoiceResourceId).toBe(card.resource.id);
+
+    // Simula o que quebrava a heuristica antiga: a descricao deixa de comecar com
+    // 'Pagamento de fatura:'. Com a referencia estrutural, o pagamento continua sendo
+    // reconhecido e a fatura NAO volta a ser cobrada.
+    db.raw.prepare('UPDATE movements SET description = ? WHERE id = ?').run('Pagamento traduzido/renomeado', payment.movementId);
+    const list = new ListOpenCreditInvoices(db.repos);
+    const [invoice] = (await list.execute(nucleus.id)).filter((item) => item.cardResourceId === card.resource.id);
+    expect(invoice?.amountCents).toBe(0);
+
+    // Reabrir o pagamento nao e possivel: a fatura consta como paga.
+    await expect(new PayCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate, paymentResourceId: account.id, date: dueDate, createdByPersonId: person.id, clientOperationId: 'struct-pay-2' })).rejects.toMatchObject({ code: 'INVOICE_MUST_BE_CLOSED' });
+    expect(calculateResourceBalance(account.id, 10000, await db.repos.movements.listLegsForBalance(nucleus.id)).toCents()).toBe(7500);
   });
 
   it('usa o corte da fatura e encaminha compras para o próximo ciclo se a fatura atual já foi fechada', async () => {

@@ -16,6 +16,27 @@ export class KyselyCreditInvoiceRepository implements CreditInvoiceRepository {
     const now = new Date().toISOString();
     await this.db.insertInto('credit_invoices').values({ id: record.id, nucleus_id: record.nucleusId, card_resource_id: record.cardResourceId, due_date: record.dueDate, status: record.status, closed_at: record.closedAt, paid_at: record.paidAt, payment_resource_id: record.paymentResourceId, payment_movement_id: record.paymentMovementId, created_at: now, updated_at: now }).execute();
   }
+  /**
+   * Transiciona a fatura para PAID de forma CONDICIONAL: o `where status = 'CLOSED'` faz
+   * parte do UPDATE, entao duas operacoes concorrentes nao conseguem pagar a mesma fatura
+   * duas vezes. A versao anterior atualizava apenas por `id`, entao a leitura de status em
+   * PayCreditInvoice e a escrita ficavam separadas no tempo (TOCTOU): dois
+   * clientOperationId distintos passavam pela validacao e o caixa era debitado em dobro.
+   *
+   * Devolve o numero de linhas afetadas — o chamador DEVE conferir que foi exatamente 1.
+   */
+  async markPaid(invoiceId: string, paidAt: string, paymentResourceId: string, paymentMovementId: string): Promise<number> {
+    const result = await this.db.updateTable('credit_invoices').set({
+      status: 'PAID',
+      paid_at: paidAt,
+      payment_resource_id: paymentResourceId,
+      payment_movement_id: paymentMovementId,
+      updated_at: new Date().toISOString(),
+    }).where('id', '=', invoiceId).where('status', '=', 'CLOSED').executeTakeFirst();
+
+    return Number(result.numUpdatedRows);
+  }
+
   async update(record: CreditInvoiceRecord): Promise<void> {
     await this.db.updateTable('credit_invoices').set({ status: record.status, closed_at: record.closedAt, paid_at: record.paidAt, payment_resource_id: record.paymentResourceId, payment_movement_id: record.paymentMovementId, updated_at: new Date().toISOString() }).where('id', '=', record.id).execute();
   }
