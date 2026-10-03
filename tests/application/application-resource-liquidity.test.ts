@@ -55,7 +55,7 @@ describe('Aplicações — prazo de liquidez e movimentações específicas', ()
   it('aceita todas as categorias de entrada e mantém o saldo das aplicações separado do dinheiro disponível', async () => {
     db = await createTestDb();
     const { person, nucleus, categories } = await seedPersonAndNucleus(db);
-    const account = await seedResource(db, nucleus.id, person.id, { initialBalanceCents: 100000 });
+    await seedResource(db, nucleus.id, person.id, { initialBalanceCents: 100000 });
     const { resource: application } = await new CreateResource(db.uow).execute({
       nucleusId: nucleus.id,
       name: 'Tesouro de teste',

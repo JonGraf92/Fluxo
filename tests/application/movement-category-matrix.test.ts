@@ -72,7 +72,9 @@ describe('Lancamentos categorizados — matriz ponta a ponta em SQLite isolado',
       expect(legs[0]?.resourceId).toBe(resource.id);
       expect(legs[0]?.amountCents).toBe(method === 'CREDIT' ? 1200 + index : -(1200 + index));
     }
-    expect(ids).toHaveLength(10);
+    // Derivado da constante real em vez de um literal fixo: a matriz cobre todas as
+    // categorias de despesa padrao, entao o numero acompanha a lista automaticamente.
+    expect(ids).toHaveLength(DEFAULT_EXPENSE_CATEGORIES.length);
   });
 
   it('rejeita categoria de tipo errado e descricoes vazias sem gravar movimentos', async () => {
