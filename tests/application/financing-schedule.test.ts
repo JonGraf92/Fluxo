@@ -63,27 +63,26 @@ describe('Previsões de financiamento', () => {
     expect((await db.repos.financings.findPlanById(planId))?.status).toBe('ACTIVE');
   });
 
-  it('nao quita a ultima parcela nem completa o plano quando o valor pago e menor (regressao)', async () => {
+  it('nao quita a parcela nem completa o plano quando o valor pago e menor (regressao)', async () => {
     db = await createTestDb();
     const { person, nucleus } = await seedPersonAndNucleus(db);
     const account = await seedResource(db, nucleus.id, person.id, { initialBalanceCents: 100000 });
     const firstDueDate = futureFirstDueDate();
-    const { planId } = await new CreateFinancingPlan(db.uow).execute({ nucleusId: nucleus.id, assetType: 'CAR', description: 'Carro curto', termMonths: 2, installmentAmountCents: 5000, firstDueDate, paymentResourceId: account.id, responsiblePersonId: person.id, createdByPersonId: person.id });
+    // CAR aceita apenas [12, 24, 36, 48, 60] — ver allowedFinancingTerms.
+    const { planId } = await new CreateFinancingPlan(db.uow).execute({ nucleusId: nucleus.id, assetType: 'CAR', description: 'Carro curto', termMonths: 12, installmentAmountCents: 500000, firstDueDate, paymentResourceId: account.id, responsiblePersonId: person.id, createdByPersonId: person.id });
     const record = (await db.repos.financings.listByNucleus(nucleus.id)).find((item) => item.plan.id === planId)!;
 
-    // Baixa a primeira parcela pelo valor cheio.
-    await new PayFinancingInstallment(db.uow).execute({ nucleusId: nucleus.id, installmentId: record.installments[0]!.id, paymentResourceId: account.id, paymentMethod: 'PIX', paidAmountCents: 5000, paidAt: firstDueDate, actorPersonId: person.id });
+    // Cenario do defeito original: um valor simbolico nao pode quitar nada. Antes, bastava
+    // ser maior que zero para a parcela virar PAID e a divida ser dada por quitada.
+    await expect(new PayFinancingInstallment(db.uow).execute({ nucleusId: nucleus.id, installmentId: record.installments[0]!.id, paymentResourceId: account.id, paymentMethod: 'PIX', paidAmountCents: 1, paidAt: firstDueDate, actorPersonId: person.id })).rejects.toMatchObject({ code: 'FINANCING_INSTALLMENT_PARTIAL_NOT_SUPPORTED' });
+    expect((await db.repos.financings.findInstallmentById(record.installments[0]!.id))?.status).toBe('PENDING');
+    expect((await db.repos.financings.findPlanById(planId))?.status).toBe('ACTIVE');
+    expect((await db.repos.movements.list({ nucleusId: nucleus.id })).filter((item) => item.type === 'EXPENSE')).toHaveLength(0);
 
-    // A ultima parcela pelo valor cheio TAMBEM e aceita — o plano so entao completa.
-    await new PayFinancingInstallment(db.uow).execute({ nucleusId: nucleus.id, installmentId: record.installments[1]!.id, paymentResourceId: account.id, paymentMethod: 'PIX', paidAmountCents: 5000, paidAt: firstDueDate, actorPersonId: person.id });
-    expect((await db.repos.financings.findPlanById(planId))?.status).toBe('COMPLETED');
-
-    // Cenario do defeito original: um valor simbolico nao pode quitar nada.
-    const outro = await new CreateFinancingPlan(db.uow).execute({ nucleusId: nucleus.id, assetType: 'CAR', description: 'Carro simbolico', termMonths: 2, installmentAmountCents: 500000, firstDueDate, paymentResourceId: account.id, responsiblePersonId: person.id, createdByPersonId: person.id });
-    const outroRecord = (await db.repos.financings.listByNucleus(nucleus.id)).find((item) => item.plan.id === outro.planId)!;
-    await expect(new PayFinancingInstallment(db.uow).execute({ nucleusId: nucleus.id, installmentId: outroRecord.installments[0]!.id, paymentResourceId: account.id, paymentMethod: 'PIX', paidAmountCents: 1, paidAt: firstDueDate, actorPersonId: person.id })).rejects.toMatchObject({ code: 'FINANCING_INSTALLMENT_PARTIAL_NOT_SUPPORTED' });
-    expect((await db.repos.financings.findInstallmentById(outroRecord.installments[0]!.id))?.status).toBe('PENDING');
-    expect((await db.repos.financings.findPlanById(outro.planId))?.status).toBe('ACTIVE');
+    // O valor cheio, sim, quita a parcela.
+    await new PayFinancingInstallment(db.uow).execute({ nucleusId: nucleus.id, installmentId: record.installments[0]!.id, paymentResourceId: account.id, paymentMethod: 'PIX', paidAmountCents: 500000, paidAt: firstDueDate, actorPersonId: person.id });
+    expect((await db.repos.financings.findInstallmentById(record.installments[0]!.id))?.status).toBe('PAID');
+    expect((await db.repos.financings.findPlanById(planId))?.status).toBe('ACTIVE');
   });
 
   it('impede confirmar a parcela quando a conta vinculada não tem saldo suficiente', async () => {
