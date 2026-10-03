@@ -109,14 +109,20 @@ describe('Ciclo da fatura — compras, consolidacao e pagamento', () => {
 
     // Simula o que quebrava a heuristica antiga: a descricao deixa de comecar com
     // 'Pagamento de fatura:'. Com a referencia estrutural, o pagamento continua sendo
-    // reconhecido e a fatura NAO volta a ser cobrada.
+    // reconhecido. `amountCents` aqui e o total de COMPRAS da fatura (nao o saldo devedor),
+    // entao a prova e que um novo pagamento NAO e aceito: sem a referencia estrutural, a
+    // fatura pareceria ainda ter saldo devedor e seria cobrada de novo.
     db.raw.prepare('UPDATE movements SET description = ? WHERE id = ?').run('Pagamento traduzido/renomeado', payment.movementId);
-    const list = new ListOpenCreditInvoices(db.repos);
-    const [invoice] = (await list.execute(nucleus.id)).filter((item) => item.cardResourceId === card.resource.id);
-    expect(invoice?.amountCents).toBe(0);
 
-    // Reabrir o pagamento nao e possivel: a fatura consta como paga.
     await expect(new PayCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate, paymentResourceId: account.id, date: dueDate, createdByPersonId: person.id, clientOperationId: 'struct-pay-2' })).rejects.toMatchObject({ code: 'INVOICE_MUST_BE_CLOSED' });
+
+    // E o saldo devedor calculado por PayCreditInvoice cai a zero, exercitando exatamente a
+    // linha que antes dependia do texto. Para isso, reabre-se a fatura para CLOSED e tenta-se
+    // pagar de novo: deve falhar por nao haver saldo pendente (INVOICE_ALREADY_PAID), o que
+    // so acontece se o pagamento anterior foi reconhecido pela referencia estrutural.
+    db.raw.prepare("UPDATE credit_invoices SET status = 'CLOSED', paid_at = NULL WHERE card_resource_id = ? AND due_date = ?").run(card.resource.id, dueDate);
+    await expect(new PayCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: card.resource.id, invoiceDueDate: dueDate, paymentResourceId: account.id, date: dueDate, createdByPersonId: person.id, clientOperationId: 'struct-pay-3' })).rejects.toMatchObject({ code: 'INVOICE_ALREADY_PAID' });
+
     expect(calculateResourceBalance(account.id, 10000, await db.repos.movements.listLegsForBalance(nucleus.id)).toCents()).toBe(7500);
   });
 
