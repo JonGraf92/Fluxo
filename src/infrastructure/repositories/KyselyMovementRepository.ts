@@ -4,6 +4,7 @@ import { Movement } from '../../domain/entities/Movement';
 import { MovementLeg } from '../../domain/entities/MovementLeg';
 import { MovementFilter, MovementRepository } from '../../application/ports/repositories';
 import { LegForBalance } from '../../domain/services/BalanceCalculator';
+import { assertLedgerInvariants } from '../../domain/services/LedgerInvariants';
 import { MovementStatus } from '../../domain/value-objects/enums';
 import { Database } from '../db/types';
 import { mapAdjustment, mapMovement, mapMovementLeg, toIso } from './mappers';
@@ -15,8 +16,20 @@ export class KyselyMovementRepository implements MovementRepository {
    * Grava o Movement e todas as suas legs. Chamado sempre de dentro de um
    * UnitOfWork.run(...) — este método por si só não abre transação; a atomicidade vem de
    * `this.db` já ser a transação corrente (ver SqliteUnitOfWork).
+   *
+   * Este é o UNICO ponto de escrita do ledger, então é aqui que o invariante contábil é
+   * verificado: nenhum movimento entra no banco sem satisfazer as regras de partidas
+   * (soma zero em transferência, sinal correto em entrada/saída, ausência de partida nula).
+   * Verificar na fronteira de persistência garante que nem um caminho novo de código
+   * consiga gravar um lançamento inconsistente por esquecimento.
    */
   async createWithLegs(movement: Movement, legs: MovementLeg[]): Promise<void> {
+    assertLedgerInvariants({
+      movementType: movement.type,
+      description: movement.description,
+      legs: legs.map((leg) => ({ resourceId: leg.resourceId, amountCents: leg.amountCents })),
+    });
+
     await this.db
       .insertInto('movements')
       .values({
