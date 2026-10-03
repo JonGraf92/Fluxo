@@ -66,7 +66,7 @@ describe('Previsões de financiamento', () => {
   it('nao quita a parcela nem completa o plano quando o valor pago e menor (regressao)', async () => {
     db = await createTestDb();
     const { person, nucleus } = await seedPersonAndNucleus(db);
-    const account = await seedResource(db, nucleus.id, person.id, { initialBalanceCents: 100000 });
+    const account = await seedResource(db, nucleus.id, person.id, { initialBalanceCents: 1000000 });
     const firstDueDate = futureFirstDueDate();
     // CAR aceita apenas [12, 24, 36, 48, 60] — ver allowedFinancingTerms.
     const { planId } = await new CreateFinancingPlan(db.uow).execute({ nucleusId: nucleus.id, assetType: 'CAR', description: 'Carro curto', termMonths: 12, installmentAmountCents: 500000, firstDueDate, paymentResourceId: account.id, responsiblePersonId: person.id, createdByPersonId: person.id });
