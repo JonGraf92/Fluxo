@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { CloseCreditInvoice } from '../../src/application/use-cases/movement/CloseCreditInvoice';
 import { CreateExpense } from '../../src/application/use-cases/movement/CreateExpense';
 import { CreateTransfer } from '../../src/application/use-cases/movement/CreateTransfer';
+import { PayCreditInvoice } from '../../src/application/use-cases/movement/PayCreditInvoice';
 import { buildLegs, buildMovement } from '../../src/application/use-cases/movement/shared';
 import { CreateResource } from '../../src/application/use-cases/resource/CreateResource';
 import { createTestDb, TestDb } from '../testDb';
@@ -71,7 +73,7 @@ describe('Fronteira de persistencia do ledger', () => {
     expect(legs[0]?.amountCents).toBe(2500);
   });
 
-  it('mantem a soma das partidas igual a zero em toda transferencia real', async () => {
+  it('mantem a soma das partidas igual a zero na transferencia entre ativos', async () => {
     db = await createTestDb();
     const { person, nucleus } = await seedPersonAndNucleus(db);
     const origem = await seedResource(db, nucleus.id, person.id, { name: 'Origem', initialBalanceCents: 100000 });
@@ -85,5 +87,23 @@ describe('Fronteira de persistencia do ledger', () => {
       const net = legs.reduce((sum, leg) => sum + leg.amountCents, 0);
       if (movement.type === 'TRANSFER') expect(net).toBe(0);
     }
+  });
+
+  it('mantem as duas pontas negativas no pagamento de fatura (liquidacao de passivo)', async () => {
+    db = await createTestDb();
+    const { person, nucleus, categories } = await seedPersonAndNucleus(db);
+    const conta = await seedResource(db, nucleus.id, person.id, { name: 'Conta', initialBalanceCents: 100000 });
+    const cartao = await new CreateResource(db.uow).execute({ nucleusId: nucleus.id, name: 'Cartao', type: 'CREDIT_CARD', statementDueDay: 10, statementClosingDay: 5, initialBalanceCents: 0, ownerPersonId: person.id });
+    const category = categories.find((item) => item.kind === 'EXPENSE')!;
+    const dueDate = '2026-10-10';
+    await new CreateExpense(db.uow).execute({ nucleusId: nucleus.id, resourceId: cartao.resource.id, categoryId: category.id, amountCents: 2500, description: 'Compra', date: '2026-09-27', createdByPersonId: person.id, paymentMethod: 'CREDIT', invoiceDueDate: dueDate, clientOperationId: 'ledger-invoice-purchase' });
+    await new CloseCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: cartao.resource.id, invoiceDueDate: dueDate });
+    const payment = await new PayCreditInvoice(db.uow).execute({ nucleusId: nucleus.id, cardResourceId: cartao.resource.id, invoiceDueDate: dueDate, paymentResourceId: conta.id, date: dueDate, createdByPersonId: person.id, clientOperationId: 'ledger-invoice-pay' });
+
+    const legs = await db.repos.movements.listLegsByMovementIds([payment.movementId]);
+    expect(legs).toHaveLength(2);
+    // Conta debitada e divida reduzida: as duas pontas negativas, mesmo valor.
+    expect(legs.every((leg) => leg.amountCents === -2500)).toBe(true);
+    expect(legs.reduce((sum, leg) => sum + leg.amountCents, 0)).toBe(-5000);
   });
 });

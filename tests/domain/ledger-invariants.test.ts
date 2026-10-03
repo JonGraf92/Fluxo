@@ -7,20 +7,52 @@ import { assertLedgerInvariants } from '../../src/domain/services/LedgerInvarian
  * sistema tinha partidas dobradas por acidente em um dos quatro tipos de movimento.
  */
 describe('Invariantes contabeis do ledger', () => {
-  it('aceita transferencia com duas partidas que se cancelam', () => {
+  const ativos = new Map([['conta', 'MONEY'], ['poupanca', 'MONEY']] as const);
+  const comCartao = new Map([['conta', 'MONEY'], ['cartao', 'LIABILITY']] as const);
+
+  it('aceita transferencia entre ativos com duas partidas que se cancelam', () => {
     expect(() => assertLedgerInvariants({
       movementType: 'TRANSFER',
       description: 'Da conta para a poupanca',
       legs: [{ resourceId: 'conta', amountCents: -5000 }, { resourceId: 'poupanca', amountCents: 5000 }],
+      resourceNatures: ativos,
     })).not.toThrow();
   });
 
-  it('recusa transferencia cujas pontas nao se cancelam', () => {
+  it('recusa transferencia entre ativos cujas pontas nao se cancelam', () => {
     expect(() => assertLedgerInvariants({
       movementType: 'TRANSFER',
       description: 'Transferencia torta',
       legs: [{ resourceId: 'conta', amountCents: -5000 }, { resourceId: 'poupanca', amountCents: 4000 }],
+      resourceNatures: ativos,
     })).toThrowError(expect.objectContaining({ code: 'LEDGER_TRANSFER_NOT_BALANCED' }));
+  });
+
+  it('ACEITA liquidacao de passivo com duas partidas negativas (pagamento de fatura)', () => {
+    // Pagar fatura debita a conta E reduz a divida do cartao: -X e -X. Exigir soma zero
+    // aqui estaria errado — foi o erro da primeira versao da regra.
+    expect(() => assertLedgerInvariants({
+      movementType: 'TRANSFER',
+      description: 'Pagamento de fatura: Cartao',
+      legs: [{ resourceId: 'conta', amountCents: -2500 }, { resourceId: 'cartao', amountCents: -2500 }],
+      resourceNatures: comCartao,
+    })).not.toThrow();
+  });
+
+  it('recusa liquidacao de passivo com pontas de valores diferentes ou sinal invertido', () => {
+    expect(() => assertLedgerInvariants({
+      movementType: 'TRANSFER',
+      description: 'Fatura com valores divergentes',
+      legs: [{ resourceId: 'conta', amountCents: -2500 }, { resourceId: 'cartao', amountCents: -2000 }],
+      resourceNatures: comCartao,
+    })).toThrowError(expect.objectContaining({ code: 'LEDGER_LIABILITY_SETTLEMENT_MUST_MATCH' }));
+
+    expect(() => assertLedgerInvariants({
+      movementType: 'TRANSFER',
+      description: 'Fatura creditando o cartao',
+      legs: [{ resourceId: 'conta', amountCents: -2500 }, { resourceId: 'cartao', amountCents: 2500 }],
+      resourceNatures: comCartao,
+    })).toThrowError(expect.objectContaining({ code: 'LEDGER_LIABILITY_SETTLEMENT_MUST_DEBIT_BOTH' }));
   });
 
   it('recusa transferencia para o mesmo recurso', () => {
@@ -28,6 +60,7 @@ describe('Invariantes contabeis do ledger', () => {
       movementType: 'TRANSFER',
       description: 'Transferencia circular',
       legs: [{ resourceId: 'conta', amountCents: -5000 }, { resourceId: 'conta', amountCents: 5000 }],
+      resourceNatures: ativos,
     })).toThrowError(expect.objectContaining({ code: 'LEDGER_TRANSFER_SAME_RESOURCE' }));
   });
 
@@ -40,6 +73,7 @@ describe('Invariantes contabeis do ledger', () => {
         { resourceId: 'b', amountCents: 2500 },
         { resourceId: 'c', amountCents: 2500 },
       ],
+      resourceNatures: ativos,
     })).toThrowError(expect.objectContaining({ code: 'LEDGER_TRANSFER_REQUIRES_TWO_LEGS' }));
   });
 

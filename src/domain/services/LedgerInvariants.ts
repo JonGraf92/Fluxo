@@ -37,21 +37,33 @@ export interface LedgerInvariantInput {
  *  1. Todo movimento tem ao menos uma leg (D-018: o valor vive apenas nas legs).
  *  2. Nenhuma leg pode ter valor zero — uma partida nula nao representa nada e costuma
  *     indicar bug de construcao (ex.: sinal trocado que zerou o delta).
- *  3. TRANSFER: exatamente duas legs, de recursos DIFERENTES, que se cancelam (soma zero).
- *     E o caso mais forte: transferencia nunca altera o patrimonio total.
- *  4. INCOME: exatamente uma leg, estritamente POSITIVA.
- *  5. EXPENSE: exatamente uma leg, com sinal coerente com a NATUREZA do recurso.
- *  6. ADJUSTMENT: exatamente uma leg, nao nula (o delta pode ser positivo ou negativo).
+ *  3. TRANSFER entre recursos da MESMA natureza: duas legs que se cancelam (soma zero).
+ *  4. TRANSFER que liquida um PASSIVO (pagamento de fatura): duas legs NEGATIVAS.
+ *  5. INCOME: exatamente uma leg, estritamente POSITIVA.
+ *  6. EXPENSE: exatamente uma leg, com sinal coerente com a NATUREZA do recurso.
+ *  7. ADJUSTMENT: exatamente uma leg, nao nula (o delta pode ser positivo ou negativo).
  *
  * Lanca DomainError com codigo estavel — nunca corrige em silencio.
  *
- * NOTA DELIBERADA sobre EXPENSE: uma saida NAO exige sinal negativo. O sinal depende da
+ * NOTA DELIBERADA 1 — EXPENSE: uma saida NAO exige sinal negativo. O sinal depende da
  * natureza do recurso tocado (natureOf):
  *   - recurso de dinheiro/beneficio (ativo)  -> debita, sinal NEGATIVO;
  *   - cartao de credito (PASSIVO)            -> a divida AUMENTA, sinal POSITIVO.
- * Foi exatamente isto que a primeira versao desta funcao errou: ela exigia sempre sinal
- * negativo e barrava as compras no cartao, que estao corretas. A regra certa e de
- * coerencia com a natureza, nao de sinal fixo.
+ * A primeira versao desta funcao errou ao exigir sempre sinal negativo, barrando compras
+ * no cartao que estavam corretas. A regra certa e de coerencia com a natureza.
+ *
+ * NOTA DELIBERADA 2 — TRANSFER nao e uma coisa so. O tipo cobre duas operacoes com efeitos
+ * patrimoniais OPOSTOS, e a primeira versao desta funcao tambem errou aqui ao exigir soma
+ * zero sempre:
+ *
+ *   a) Transferencia entre ativos (conta -> poupanca): -X e +X. O patrimonio NAO muda;
+ *      e justamente por isso a soma das partidas e zero.
+ *   b) Liquidacao de passivo (pagar fatura do cartao): -X na conta e -X no cartao. O
+ *      patrimonio DIMINUI em 2X, porque a divida e quitada com dinheiro que sai. Exigir
+ *      soma zero aqui estaria errado e impediria pagar fatura.
+ *
+ * As duas se distinguem pela natureza das pontas: se UMA das pontas e passivo, e liquidacao
+ * (caso b); se ambas sao da mesma natureza ativa, e transferencia (caso a).
  */
 
 export interface LedgerLeg {
@@ -106,7 +118,30 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
         `Transferência "${input.description}" aponta para o mesmo recurso nas duas pontas.`,
       );
     }
-    // Garantia formal de que transferencia nunca distorce o patrimonio total.
+
+    const originNature = input.resourceNatures?.get(origin.resourceId);
+    const destinationNature = input.resourceNatures?.get(destination.resourceId);
+    const involvesLiability = originNature === 'LIABILITY' || destinationNature === 'LIABILITY';
+
+    if (involvesLiability) {
+      // Liquidacao de passivo (pagamento de fatura): as DUAS pontas sao negativas — o
+      // dinheiro sai da conta e a divida do cartao e reduzida. O patrimonio cai duas vezes.
+      if (origin.amountCents >= 0 || destination.amountCents >= 0) {
+        throw new DomainError(
+          'LEDGER_LIABILITY_SETTLEMENT_MUST_DEBIT_BOTH',
+          `Liquidação de passivo "${input.description}" deve debitar as duas pontas (conta e cartão); recebeu ${origin.amountCents} e ${destination.amountCents}.`,
+        );
+      }
+      if (origin.amountCents !== destination.amountCents) {
+        throw new DomainError(
+          'LEDGER_LIABILITY_SETTLEMENT_MUST_MATCH',
+          `Liquidação de passivo "${input.description}" deve debitar o mesmo valor nas duas pontas; recebeu ${origin.amountCents} e ${destination.amountCents}.`,
+        );
+      }
+      return;
+    }
+
+    // Transferencia entre ativos: as pontas se cancelam e o patrimonio NAO muda.
     if (origin.amountCents + destination.amountCents !== 0) {
       throw new DomainError(
         'LEDGER_TRANSFER_NOT_BALANCED',
