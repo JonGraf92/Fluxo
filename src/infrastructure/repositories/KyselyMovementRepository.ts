@@ -5,7 +5,7 @@ import { MovementLeg } from '../../domain/entities/MovementLeg';
 import { MovementFilter, MovementRepository } from '../../application/ports/repositories';
 import { LegForBalance } from '../../domain/services/BalanceCalculator';
 import { assertLedgerInvariants } from '../../domain/services/LedgerInvariants';
-import { MovementStatus } from '../../domain/value-objects/enums';
+import { MovementStatus, ResourceType, natureOf } from '../../domain/value-objects/enums';
 import { Database } from '../db/types';
 import { mapAdjustment, mapMovement, mapMovementLeg, toIso } from './mappers';
 
@@ -24,10 +24,22 @@ export class KyselyMovementRepository implements MovementRepository {
    * consiga gravar um lançamento inconsistente por esquecimento.
    */
   async createWithLegs(movement: Movement, legs: MovementLeg[]): Promise<void> {
+    // Busca a natureza dos recursos envolvidos para conferir o SINAL das partidas. Uma saida
+    // em recurso de dinheiro debita (negativo); uma compra no cartao de credito aumenta o
+    // passivo (positivo). Sem essa informacao, o sinal so pode ser conferido por natureza.
+    const resourceIds = [...new Set(legs.map((leg) => leg.resourceId))];
+    const rows = resourceIds.length
+      ? await this.db.selectFrom('resources').select(['id', 'type']).where('id', 'in', resourceIds).execute()
+      : [];
+    const resourceNatures = new Map(
+      rows.map((row) => [row.id, natureOf(row.type as ResourceType)] as const),
+    );
+
     assertLedgerInvariants({
       movementType: movement.type,
       description: movement.description,
       legs: legs.map((leg) => ({ resourceId: leg.resourceId, amountCents: leg.amountCents })),
+      resourceNatures,
     });
 
     await this.db

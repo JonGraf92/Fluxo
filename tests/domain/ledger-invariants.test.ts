@@ -43,30 +43,28 @@ describe('Invariantes contabeis do ledger', () => {
     })).toThrowError(expect.objectContaining({ code: 'LEDGER_TRANSFER_REQUIRES_TWO_LEGS' }));
   });
 
-  it('exige sinal correto em entrada e saida', () => {
-    expect(() => assertLedgerInvariants({
-      movementType: 'INCOME',
-      description: 'Entrada com sinal errado',
-      legs: [{ resourceId: 'conta', amountCents: -1000 }],
-    })).toThrowError(expect.objectContaining({ code: 'LEDGER_INCOME_MUST_BE_POSITIVE' }));
+  it('exige sinal coerente com a NATUREZA do recurso em entrada e saida', () => {
+    const money = new Map([['conta', 'MONEY'] as const]);
+    const liability = new Map([['cartao', 'LIABILITY'] as const]);
+    const benefit = new Map([['vr', 'BENEFIT'] as const]);
 
-    expect(() => assertLedgerInvariants({
-      movementType: 'EXPENSE',
-      description: 'Saida com sinal errado',
-      legs: [{ resourceId: 'conta', amountCents: 1000 }],
-    })).toThrowError(expect.objectContaining({ code: 'LEDGER_EXPENSE_MUST_BE_NEGATIVE' }));
+    // Entrada sempre credita, independentemente da natureza.
+    expect(() => assertLedgerInvariants({ movementType: 'INCOME', description: 'Entrada com sinal errado', legs: [{ resourceId: 'conta', amountCents: -1000 }], resourceNatures: money }))
+      .toThrowError(expect.objectContaining({ code: 'LEDGER_INCOME_MUST_BE_POSITIVE' }));
+    expect(() => assertLedgerInvariants({ movementType: 'INCOME', description: 'Entrada correta', legs: [{ resourceId: 'conta', amountCents: 1000 }], resourceNatures: money })).not.toThrow();
 
-    expect(() => assertLedgerInvariants({
-      movementType: 'INCOME',
-      description: 'Entrada correta',
-      legs: [{ resourceId: 'conta', amountCents: 1000 }],
-    })).not.toThrow();
+    // Saida em dinheiro/beneficio DEBITA (negativo).
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Saida em dinheiro com sinal trocado', legs: [{ resourceId: 'conta', amountCents: 1000 }], resourceNatures: money }))
+      .toThrowError(expect.objectContaining({ code: 'LEDGER_EXPENSE_MUST_DEBIT_RESOURCE' }));
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Saida em beneficio com sinal trocado', legs: [{ resourceId: 'vr', amountCents: 1000 }], resourceNatures: benefit }))
+      .toThrowError(expect.objectContaining({ code: 'LEDGER_EXPENSE_MUST_DEBIT_RESOURCE' }));
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Saida correta', legs: [{ resourceId: 'conta', amountCents: -1000 }], resourceNatures: money })).not.toThrow();
 
-    expect(() => assertLedgerInvariants({
-      movementType: 'EXPENSE',
-      description: 'Saida correta',
-      legs: [{ resourceId: 'conta', amountCents: -1000 }],
-    })).not.toThrow();
+    // Compra no CARTAO e passivo: aumenta a divida, logo POSITIVA. Este e o caso que a
+    // primeira versao desta funcao errou ao exigir sinal negativo sempre.
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Compra no cartao', legs: [{ resourceId: 'cartao', amountCents: 2500 }], resourceNatures: liability })).not.toThrow();
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Compra no cartao com sinal invertido', legs: [{ resourceId: 'cartao', amountCents: -2500 }], resourceNatures: liability }))
+      .toThrowError(expect.objectContaining({ code: 'LEDGER_CREDIT_EXPENSE_MUST_INCREASE_LIABILITY' }));
   });
 
   it('aceita ajuste positivo e negativo, mas nunca nulo', () => {

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { CreateExpense } from '../../src/application/use-cases/movement/CreateExpense';
 import { CreateTransfer } from '../../src/application/use-cases/movement/CreateTransfer';
 import { buildLegs, buildMovement } from '../../src/application/use-cases/movement/shared';
+import { CreateResource } from '../../src/application/use-cases/resource/CreateResource';
 import { createTestDb, TestDb } from '../testDb';
 import { seedPersonAndNucleus, seedResource } from '../seed';
 
@@ -38,7 +40,7 @@ describe('Fronteira de persistencia do ledger', () => {
     expect(await db.repos.movements.listLegsByMovementIds([movement.id])).toHaveLength(0);
   });
 
-  it('recusa gravar saida com sinal positivo', async () => {
+  it('recusa gravar saida com sinal invertido em recurso de dinheiro', async () => {
     db = await createTestDb();
     const { person, nucleus } = await seedPersonAndNucleus(db);
     const conta = await seedResource(db, nucleus.id, person.id, { name: 'Conta', initialBalanceCents: 10000 });
@@ -50,8 +52,23 @@ describe('Fronteira de persistencia do ledger', () => {
     });
     const legs = buildLegs(movement.id, [{ resourceId: conta.id, amountCents: 1000 }]);
 
-    await expect(db.repos.movements.createWithLegs(movement, legs)).rejects.toMatchObject({ code: 'LEDGER_EXPENSE_MUST_BE_NEGATIVE' });
+    await expect(db.repos.movements.createWithLegs(movement, legs)).rejects.toMatchObject({ code: 'LEDGER_EXPENSE_MUST_DEBIT_RESOURCE' });
     expect(await db.repos.movements.findById(movement.id)).toBeNull();
+  });
+
+  it('ACEITA compra no cartao com leg positiva, porque cartao e passivo', async () => {
+    db = await createTestDb();
+    const { person, nucleus, categories } = await seedPersonAndNucleus(db);
+    const cartao = await new CreateResource(db.uow).execute({ nucleusId: nucleus.id, name: 'Cartao', type: 'CREDIT_CARD', statementDueDay: 10, statementClosingDay: 5, initialBalanceCents: 0, ownerPersonId: person.id });
+    const category = categories.find((item) => item.kind === 'EXPENSE')!;
+
+    // A compra aumenta a divida: leg POSITIVA. O invariante nao pode barrar isto — foi o
+    // erro da primeira versao da regra, que exigia sinal negativo em toda saida.
+    const created = await new CreateExpense(db.uow).execute({ nucleusId: nucleus.id, resourceId: cartao.resource.id, categoryId: category.id, amountCents: 2500, description: 'Compra no credito', date: '2026-09-27', createdByPersonId: person.id, paymentMethod: 'CREDIT', invoiceDueDate: '2026-10-10', clientOperationId: 'ledger-credit-expense' });
+
+    const legs = await db.repos.movements.listLegsByMovementIds([created.movementId]);
+    expect(legs).toHaveLength(1);
+    expect(legs[0]?.amountCents).toBe(2500);
   });
 
   it('mantem a soma das partidas igual a zero em toda transferencia real', async () => {

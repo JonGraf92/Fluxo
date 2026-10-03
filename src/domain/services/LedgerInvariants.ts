@@ -40,11 +40,36 @@ export interface LedgerInvariantInput {
  *  3. TRANSFER: exatamente duas legs, de recursos DIFERENTES, que se cancelam (soma zero).
  *     E o caso mais forte: transferencia nunca altera o patrimonio total.
  *  4. INCOME: exatamente uma leg, estritamente POSITIVA.
- *  5. EXPENSE: exatamente uma leg, estritamente NEGATIVA.
+ *  5. EXPENSE: exatamente uma leg, com sinal coerente com a NATUREZA do recurso.
  *  6. ADJUSTMENT: exatamente uma leg, nao nula (o delta pode ser positivo ou negativo).
  *
  * Lanca DomainError com codigo estavel — nunca corrige em silencio.
+ *
+ * NOTA DELIBERADA sobre EXPENSE: uma saida NAO exige sinal negativo. O sinal depende da
+ * natureza do recurso tocado (natureOf):
+ *   - recurso de dinheiro/beneficio (ativo)  -> debita, sinal NEGATIVO;
+ *   - cartao de credito (PASSIVO)            -> a divida AUMENTA, sinal POSITIVO.
+ * Foi exatamente isto que a primeira versao desta funcao errou: ela exigia sempre sinal
+ * negativo e barrava as compras no cartao, que estao corretas. A regra certa e de
+ * coerencia com a natureza, nao de sinal fixo.
  */
+
+export interface LedgerLeg {
+  readonly resourceId: string;
+  readonly amountCents: number;
+}
+
+export interface LedgerInvariantInput {
+  readonly movementType: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT';
+  readonly description: string;
+  readonly legs: readonly LedgerLeg[];
+  /**
+   * Natureza do recurso de cada partida, para conferir o sinal em INCOME/EXPENSE.
+   * Opcional: quando ausente, apenas a cardinalidade e a nao-nulidade sao conferidas.
+   */
+  readonly resourceNatures?: ReadonlyMap<string, 'MONEY' | 'BENEFIT' | 'LIABILITY'>;
+}
+
 export function assertLedgerInvariants(input: LedgerInvariantInput): void {
   const { movementType, legs } = input;
 
@@ -105,10 +130,25 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
       `Entrada "${input.description}" deve creditar o recurso (valor positivo); recebeu ${leg.amountCents}.`,
     );
   }
-  if (movementType === 'EXPENSE' && leg.amountCents >= 0) {
-    throw new DomainError(
-      'LEDGER_EXPENSE_MUST_BE_NEGATIVE',
-      `Saída "${input.description}" deve debitar o recurso (valor negativo); recebeu ${leg.amountCents}.`,
-    );
+
+  if (movementType === 'EXPENSE') {
+    const nature = input.resourceNatures?.get(leg.resourceId);
+    // Recurso de dinheiro/beneficio: saida debita o ativo, logo negativa.
+    if (nature === 'MONEY' || nature === 'BENEFIT') {
+      if (leg.amountCents >= 0) {
+        throw new DomainError(
+          'LEDGER_EXPENSE_MUST_DEBIT_RESOURCE',
+          `Saída "${input.description}" em recurso de ${nature === 'BENEFIT' ? 'benefício' : 'dinheiro'} deve debitar o recurso (valor negativo); recebeu ${leg.amountCents}.`,
+        );
+      }
+    }
+    // Cartao de credito: e passivo, entao a compra AUMENTA a divida (sinal positivo).
+    if (nature === 'LIABILITY' && leg.amountCents <= 0) {
+      throw new DomainError(
+        'LEDGER_CREDIT_EXPENSE_MUST_INCREASE_LIABILITY',
+        `Compra no cartão "${input.description}" deve aumentar o passivo (valor positivo); recebeu ${leg.amountCents}.`,
+      );
+    }
+    // Sem informacao de natureza, nao ha como conferir o sinal sem risco de falso positivo.
   }
 }
