@@ -1,0 +1,19 @@
+# Normalização de fim de linha — evita que arquivos apareçam como
+# modificados em toda clonagem por causa de LF/CRLF no Windows.
+* text=auto eol=lf
+
+# Binários que não devem sofrer conversão
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Scripts do Windows precisam preservar CRLF para o cmd.exe funcionar
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Lockfile é gerado pelo npm e deve ficar intacto
+package-lock.json -text

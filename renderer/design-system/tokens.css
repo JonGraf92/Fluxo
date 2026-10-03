@@ -1,0 +1,125 @@
+/*
+  FLUXO — plano de design (resumo)
+
+  Cor: papel neutro (#F6F5F1) com tinta quase-preta (#1B1D1A) para texto — nunca preto
+  puro. Dois acentos com função, não decoração: um verde-petróleo profundo para DINHEIRO
+  (#0F6B5C) e um âmbar/ocre para BENEFÍCIO (#B8720A) — a cor reforça visualmente a Regra
+  11 (dinheiro ≠ benefício) em toda a interface, não é escolha estética solta. Vermelho
+  terracota discreto (#A23B2E) só para saídas/valores negativos — é conteúdo (sinal), não
+  identidade de marca.
+
+  Tipografia: pilha de fontes do sistema operacional (ui-serif para títulos, ui-sans-serif
+  para o resto). Deliberado: o Fluxo funciona 100% offline (ADR D-001), então não
+  carregamos webfonts de CDN — a app não pode depender de rede nem para o próprio texto.
+  Números financeiros sempre com tabular-nums, para alinhar em tabelas.
+
+  Layout: barra lateral compacta + conteúdo à esquerda, denso e funcional — não é uma
+  página de marketing. Divisórias finas no lugar de "cards genéricos"; um ponto colorido
+  ao lado de cada recurso identifica a natureza (dinheiro/benefício) como dispositivo
+  estrutural, não decoração.
+*/
+
+:root {
+  --color-bg: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-ink: #1b1d1a;
+  --color-ink-muted: #6b6d66;
+  --color-border: #e1dfd5;
+  --color-border-strong: #c9c6b8;
+
+  --color-money: #0f6b5c;
+  --color-money-bg: #e7f1ee;
+  --color-benefit: #b8720a;
+  --color-benefit-bg: #f7ecd9;
+  --color-negative: #a23b2e;
+  --color-negative-bg: #f6e9e7;
+  color-scheme: light;
+
+  --font-display: ui-serif, Georgia, 'Times New Roman', serif;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  --sidebar-width: 224px;
+}
+
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #171a18;
+  --color-surface: #222724;
+  --color-ink: #eef1ed;
+  --color-ink-muted: #a5ada7;
+  --color-border: #373f39;
+  --color-border-strong: #4c5750;
+  --color-money: #62c7a6;
+  --color-money-bg: #1c3b32;
+  --color-benefit: #edb45f;
+  --color-benefit-bg: #3d301c;
+  --color-negative: #f08e82;
+  --color-negative-bg: #422723;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-money);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-money-bg);
+}

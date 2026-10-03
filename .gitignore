@@ -1,0 +1,29 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+.DS_Store
+fluxo.db
+fluxo.db-journal
+fluxo.db-wal
+fluxo.db-shm
+.vite/
+.cache/
+
+# Segredos e ambiente — defesa em profundidade.
+# Nenhum arquivo destes existe hoje; a regra evita que um futuro .env
+# com credenciais de Open Finance / provedor fiscal chegue ao repositório.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Bancos locais de desenvolvimento e testes
+*.sqlite
+*.sqlite3
+*.db
+

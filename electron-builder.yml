@@ -1,0 +1,20 @@
+appId: com.fluxo.app
+productName: Fluxo
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+extraMetadata:
+  main: dist-electron/electron/main/index.js
+mac:
+  category: public.app-category.finance
+  target: [dmg]
+win:
+  target: [nsis]
+linux:
+  target: [AppImage]
+  category: Finance
+asar: true
