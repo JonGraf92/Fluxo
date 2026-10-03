@@ -125,7 +125,12 @@ export interface FinancingRepository {
   findInstallmentById(installmentId: string): Promise<FinancingInstallment | null>;
   listInstallments(planId: string): Promise<FinancingInstallment[]>;
   listByNucleus(nucleusId: string): Promise<FinancingPlanWithInstallments[]>;
-  markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<void>;
+  /**
+   * Quita a parcela de forma condicional (so de PENDING para PAID) e devolve o numero de
+   * linhas afetadas. O chamador DEVE conferir: 0 linhas significa que a transicao nao
+   * aconteceu e a operacao precisa falhar, nunca seguir como se tivesse dado certo.
+   */
+  markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<number>;
   setPlanStatus(planId: string, status: FinancingPlan['status']): Promise<void>;
   updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents'>): Promise<void>;
   deletePlan(planId: string): Promise<void>;

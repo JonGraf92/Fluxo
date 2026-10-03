@@ -87,7 +87,10 @@ function PayInstallmentModal({ session, plan, installment, resources, onClose, o
   const { show } = useToast();
   const payResources = resources.filter((item) => item.type === 'MONEY_ACCOUNT' || item.type === 'CASH');
   const [resourceId, setResourceId] = React.useState(installment.paymentResourceId);
-  const [amount, setAmount] = React.useState<number | null>(installment.amountCents);
+  // Valor fixo no valor da parcela: a baixa quita a parcela pelo valor cheio. O campo era
+  // editavel e sugeria que qualquer valor era aceito — mas o sistema marcava a parcela como
+  // PAID de qualquer forma, entao digitar um valor menor quitava a divida inteira.
+  const amount = installment.amountCents;
   const [date, setDate] = React.useState(todayIsoDate());
   const [method, setMethod] = React.useState<'DEBIT' | 'PIX'>('DEBIT');
   const [approved, setApproved] = React.useState(false);
@@ -109,10 +112,9 @@ function PayInstallmentModal({ session, plan, installment, resources, onClose, o
   }
   return <Modal title={`Confirmar parcela ${installment.installmentNumber}/${plan.termMonths}`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={saving || insufficient || !approved || balance === undefined}>{saving ? 'Salvando…' : 'Confirmar pagamento'}</Button></>}><div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
     <p style={{ margin: 0 }}>{plan.description} · vencimento {installment.dueDate}</p>
-    <CurrencyInput label="Valor pago nesta parcela" valueCents={amount} onChangeCents={setAmount} hint="Você pode atualizar o valor efetivamente pago; as próximas previsões não mudam." />
     <Select label="Conta de saída" value={resourceId} onChange={setResourceId} options={payResources.map((item) => ({ value: item.id, label: item.name }))} />
-    <p className="field-hint">Saldo disponível: {balance === undefined ? 'consultando…' : formatCentsToBRL(balance)}</p>
-    {insufficient && <p role="alert" style={{ margin: 0, color: 'var(--color-danger)' }}>Saldo insuficiente nesta conta. Escolha outra conta ou atualize o valor da parcela.</p>}
+    <p className="field-hint">Valor da parcela: {formatCentsToBRL(amount)} · Saldo disponível: {balance === undefined ? 'consultando…' : formatCentsToBRL(balance)}</p>
+    {insufficient && <p role="alert" style={{ margin: 0, color: 'var(--color-danger)' }}>Saldo insuficiente nesta conta. Escolha outra conta para baixar a parcela.</p>}
     <Select label="Forma de pagamento" value={method} onChange={(value) => setMethod(value as 'DEBIT' | 'PIX')} options={[{ value: 'DEBIT', label: 'Cartão de débito' }, { value: 'PIX', label: 'PIX' }]} />
     <Input label="Data do pagamento" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
     <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} />Confirmo que o pagamento foi realizado e autorizo atualizar o saldo.</label>

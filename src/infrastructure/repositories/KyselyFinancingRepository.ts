@@ -67,14 +67,25 @@ export class KyselyFinancingRepository implements FinancingRepository {
     return plans.map((plan) => ({ plan: this.mapPlan(plan), installments: byPlan.get(plan.id) ?? [] }));
   }
 
-  async markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<void> {
-    await this.db.updateTable('financing_installments').set({
+  /**
+   * Marca a parcela como paga e devolve QUANTAS linhas foram afetadas.
+   *
+   * O `where status = 'PENDING'` faz parte do UPDATE (nao de uma leitura anterior), entao a
+   * transicao e condicional e nao sofre TOCTOU. Mas o retorno PRECISA ser conferido por quem
+   * chama: a versao anterior ignorava o resultado, e um UPDATE que nao afetava linha nenhuma
+   * passava em silencio — a despesa e o audit log eram gravados mesmo assim, deixando a
+   * parcela PENDING com dinheiro ja debitado da conta.
+   */
+  async markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<number> {
+    const result = await this.db.updateTable('financing_installments').set({
       status: 'PAID',
       paid_amount_cents: paidAmountCents,
       paid_at: paidAt,
       payment_movement_id: movementId,
       payment_resource_id: paymentResourceId,
-    }).where('id', '=', installmentId).where('status', '=', 'PENDING').execute();
+    }).where('id', '=', installmentId).where('status', '=', 'PENDING').executeTakeFirst();
+
+    return Number(result.numUpdatedRows);
   }
 
   async setPlanStatus(planId: string, status: FinancingPlan['status']): Promise<void> {

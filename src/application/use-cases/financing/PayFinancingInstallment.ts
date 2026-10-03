@@ -28,6 +28,17 @@ export class PayFinancingInstallment {
       if (!Number.isInteger(input.paidAmountCents) || input.paidAmountCents <= 0) {
         throw new DomainError('FINANCING_INSTALLMENT_AMOUNT_INVALID', 'Informe um valor de parcela maior que zero.');
       }
+      // A baixa so quita a parcela pelo valor CHEIO. Antes, qualquer inteiro positivo era
+      // aceito e a parcela virava PAID de qualquer forma: pagar 1 centavo quitava R$ 5.000,
+      // e se fosse a ultima parcela o plano inteiro virava COMPLETED. Pagamento parcial
+      // exige um estado PARTIALLY_PAID com saldo devedor, que ainda nao existe no modelo —
+      // ate la, o correto e recusar em vez de silenciosamente dar a divida por quitada.
+      if (input.paidAmountCents !== installment.amountCents) {
+        throw new DomainError(
+          'FINANCING_INSTALLMENT_PARTIAL_NOT_SUPPORTED',
+          `A parcela ${installment.installmentNumber} deve ser baixada pelo valor integral de ${installment.amountCents} centavos (informado: ${input.paidAmountCents}).`,
+        );
+      }
       const resource = await repos.resources.findById(input.paymentResourceId);
       if (!resource || resource.nucleusId !== input.nucleusId) throw new NotFoundError('Conta de pagamento', input.paymentResourceId);
       if (resource.archived) throw new DomainError('RESOURCE_ARCHIVED', 'Reative a conta antes de usá-la no pagamento.');
@@ -48,7 +59,17 @@ export class PayFinancingInstallment {
         responsiblePersonId: plan.responsiblePersonId, paymentMethod: input.paymentMethod,
         invoiceDueDate: null, clientOperationId: `financing-installment-${installment.id}`,
       });
-      await repos.financings.markInstallmentPaid(installment.id, input.paidAmountCents, input.paidAt, expense.movementId, resource.id);
+      const updated = await repos.financings.markInstallmentPaid(installment.id, input.paidAmountCents, input.paidAt, expense.movementId, resource.id);
+      // Escrita que nao afeta linha nenhuma TEM de ser erro, nunca silencio. Sem esta
+      // conferencia, a despesa ja teria sido lancada e a auditoria gravada enquanto a
+      // parcela continuava PENDING — dinheiro debitado da conta e divida ainda em aberto.
+      // Lancar aqui desfaz tudo junto, porque estamos dentro do UnitOfWork.
+      if (updated !== 1) {
+        throw new DomainError(
+          'FINANCING_INSTALLMENT_STATE_CHANGED',
+          'A parcela foi alterada por outra operacao enquanto este pagamento era processado. Nenhum valor foi debitado; tente novamente.',
+        );
+      }
       const installments = await repos.financings.listInstallments(plan.id);
       if (installments.every((item) => item.status === 'PAID' || item.id === installment.id)) {
         await repos.financings.setPlanStatus(plan.id, 'COMPLETED');
