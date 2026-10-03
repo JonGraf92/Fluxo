@@ -1,4 +1,5 @@
 import { Migration } from 'kysely';
+import { sql } from 'kysely';
 
 type MigrationDb = Parameters<Migration['up']>[0];
 
@@ -21,25 +22,23 @@ type MigrationDb = Parameters<Migration['up']>[0];
 export async function up(db: MigrationDb): Promise<void> {
   await db.schema.alterTable('movements').addColumn('card_invoice_resource_id', 'text').execute();
 
-  // Backfill do historico: so TRANSFER com a descricao legada identifica pagamento de fatura.
-  // O cartao e a leg do proprio movimento cujo recurso e do tipo CREDIT_CARD.
-  await db.executeQuery(
-    db
-      .updateTable('movements')
-      .set((eb) => ({
-        card_invoice_resource_id: eb
-          .selectFrom('movement_legs')
-          .innerJoin('resources', 'resources.id', 'movement_legs.resource_id')
-          .select('movement_legs.resource_id')
-          .whereRef('movement_legs.movement_id', '=', 'movements.id')
-          .where('resources.type', '=', 'CREDIT_CARD')
-          .limit(1)
-          .as('card_invoice_resource_id'),
-      }))
-      .where('type', '=', 'TRANSFER')
-      .where('description', 'like', 'Pagamento de fatura:%')
-      .compile(),
-  );
+  // Backfill do historico em SQL direto. So TRANSFER com a descricao legada identifica
+  // pagamento de fatura; o cartao e a leg do proprio movimento cujo recurso e CREDIT_CARD.
+  // Feito em SQL puro (e nao com o query builder) porque a subquery correlacionada precisa
+  // referenciar a tabela externa, o que o builder nao expressa de forma confiavel aqui.
+  await sql`
+    UPDATE movements
+       SET card_invoice_resource_id = (
+             SELECT ml.resource_id
+               FROM movement_legs ml
+               JOIN resources r ON r.id = ml.resource_id
+              WHERE ml.movement_id = movements.id
+                AND r.type = 'CREDIT_CARD'
+              LIMIT 1
+           )
+     WHERE type = 'TRANSFER'
+       AND description LIKE 'Pagamento de fatura:%'
+  `.execute(db);
 
   await db.schema
     .createIndex('movements_card_invoice_idx')
