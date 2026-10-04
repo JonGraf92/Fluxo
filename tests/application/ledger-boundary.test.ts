@@ -81,12 +81,31 @@ describe('Fronteira de persistencia do ledger', () => {
 
     await new CreateTransfer(db.uow).execute({ nucleusId: nucleus.id, fromResourceId: origem.id, toResourceId: destino.id, amountCents: 25000, description: 'Transferencia valida', date: '2026-09-27', createdByPersonId: person.id, clientOperationId: 'ledger-valid-transfer' });
 
-    const movements = await db.repos.movements.list({ nucleusId: nucleus.id });
-    for (const movement of movements) {
-      const legs = await db.repos.movements.listLegsByMovementIds([movement.id]);
-      const net = legs.reduce((sum, leg) => sum + leg.amountCents, 0);
-      if (movement.type === 'TRANSFER') expect(net).toBe(0);
-    }
+    // A asserção de existência é o que impede este teste de ser tautológico: sem ela, um
+    // `createWithLegs` que barrasse a gravação deixaria o banco vazio e o laço abaixo não
+    // executaria — o teste passaria sem testar nada.
+    const transfers = (await db.repos.movements.list({ nucleusId: nucleus.id })).filter((movement) => movement.type === 'TRANSFER');
+    expect(transfers).toHaveLength(1);
+    const legs = await db.repos.movements.listLegsByMovementIds([transfers[0]!.id]);
+    expect(legs).toHaveLength(2);
+    expect(legs.reduce((sum, leg) => sum + leg.amountCents, 0)).toBe(0);
+  });
+
+  it('recusa lancamento cuja natureza de recurso e desconhecida (falha fechada)', async () => {
+    db = await createTestDb();
+    const { person, nucleus } = await seedPersonAndNucleus(db);
+
+    const movement = buildMovement({
+      nucleusId: nucleus.id, type: 'EXPENSE', status: 'CONFIRMED', date: '2026-09-27',
+      description: 'Saida em recurso inexistente', categoryId: null,
+      createdByPersonId: person.id, clientOperationId: 'manual-unknown-resource',
+    });
+    // Sinal POSITIVO (que seria invalido em dinheiro) apontando para um recurso que nao
+    // existe. Antes, a ausencia de natureza pulava a conferencia de sinal e isto PASSAVA.
+    const legs = buildLegs(movement.id, [{ resourceId: 'recurso-que-nao-existe', amountCents: 999999 }]);
+
+    await expect(db.repos.movements.createWithLegs(movement, legs)).rejects.toMatchObject({ code: 'LEDGER_UNKNOWN_RESOURCE_NATURE' });
+    expect(await db.repos.movements.findById(movement.id)).toBeNull();
   });
 
   it('mantem as duas pontas negativas no pagamento de fatura (liquidacao de passivo)', async () => {

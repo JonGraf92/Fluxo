@@ -93,14 +93,27 @@ export function buildPublicHandler<Schema extends z.ZodTypeAny, Result>(
  *    não apenas ignorado silenciosamente);
  * 2. deriva `personId` da identidade local, nunca do payload — mesmo que o schema
  *    aceitasse tal campo, `fn` nunca o recebe: só recebe `auth.personId`;
- * 3. se o payload tiver `nucleusId`, confirma que essa pessoa pertence a esse núcleo
- *    antes de chamar `fn`.
+ * 3. exige e confirma o acesso ao núcleo ANTES de chamar `fn`.
+ *
+ * DIRETRIZ DE PROJETO — FALHAR FECHADO (fail-closed): a autorização NÃO pode depender da
+ * presença de um campo no payload. A versão anterior fazia
+ * `if (typeof maybeNucleusId === 'string') assertNucleusAccess(...)`: um canal cujo schema
+ * esquecesse `nucleusId` simplesmente NÃO era autorizado, e passava em silêncio. Um
+ * esquecimento virava uma brecha. Hoje a ausência do campo exige um autorizador explícito,
+ * e sem ele a operação é RECUSADA.
+ *
+ * O mesmo padrão existia no invariante contábil (`LedgerInvariants`), onde recurso
+ * desconhecido escapava da checagem de sinal. Mesma classe de falha, em dois lugares.
  */
 export function buildAuthenticatedHandler<Schema extends z.ZodTypeAny, Result>(
   ctx: IpcContext,
   channel: string,
   schema: Schema,
   fn: (payload: z.infer<Schema>, auth: AuthContext) => Promise<Result>,
+  options?: {
+    /** Canais cujo payload legitimamente não tem `nucleusId` declaram como autorizar. */
+    authorize?: (payload: z.infer<Schema>, personId: string) => Promise<void>;
+  },
 ): (rawPayload: unknown) => Promise<IpcResult<Result>> {
   return async (rawPayload) => {
     const parsed = schema.safeParse(rawPayload);
@@ -116,6 +129,14 @@ export function buildAuthenticatedHandler<Schema extends z.ZodTypeAny, Result>(
       const maybeNucleusId = (parsed.data as Record<string, unknown> | undefined)?.['nucleusId'];
       if (typeof maybeNucleusId === 'string') {
         await assertNucleusAccess(ctx.repos, personId, maybeNucleusId);
+      } else if (options?.authorize) {
+        await options.authorize(parsed.data, personId);
+      } else {
+        // Nem nucleusId no payload, nem autorizador declarado: recusa. Este é o ramo que
+        // faltava — antes, ausência do campo significava "sem verificação", não "sem acesso".
+        // eslint-disable-next-line no-console
+        console.error(`Canal autenticado ${channel} não declara nucleusId nem authorize().`);
+        return { ok: false, error: { code: 'FORBIDDEN', message: 'Operação não autorizada.' } };
       }
 
       const data = await fn(parsed.data, { personId });

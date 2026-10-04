@@ -1,22 +1,18 @@
 import { DomainError } from '../errors/DomainError';
 
 /**
- * Invariante contabil GLOBAL do ledger: a soma das legs de um mesmo movimento e SEMPRE zero.
+ * Invariante contabil GLOBAL do ledger, verificado antes de qualquer lancamento ser gravado.
  *
- * Por que isto existe separado do TransferPolicy: hoje so a transferencia garantia a soma
- * zero (TransferPolicy.ts, com a mensagem "as duas pontas nao se cancelam"). Entradas,
- * saidas e ajustes emitiam uma unica leg e nunca eram conferidos. O resultado e que o
- * sistema tinha partidas dobradas apenas POR ACIDENTE, em um dos quatro tipos de movimento.
+ * DIRETRIZ DE PROJETO — FALHAR FECHADO (fail-closed):
+ * toda validacao de seguranca ou de contabilidade deve RECUSAR quando o dado necessario nao
+ * estiver disponivel — nunca pular a verificacao. Este arquivo tinha exatamente o defeito
+ * oposto: `resourceNatures` era opcional e um recurso nao encontrado simplesmente nao era
+ * conferido, de modo que um EXPENSE com sinal positivo apontando para recurso inexistente
+ * PASSAVA pelo invariante. Ausencia de dado virava ausencia de validacao.
  *
- * Com a soma zero verificada em TODO movimento, o Fluxo passa a ter validade contabil real:
- * nenhum lancamento pode criar ou destruir valor. O patrimonio total so muda quando um
- * recurso de fora do ledger e tocado — o que nunca acontece aqui, porque toda variacao de
- * saldo vem de uma leg.
- *
- * Importante: isto NAO e uma checagem de "saldo fecha". Um ajuste, por exemplo, tem uma
- * unica leg com o delta e soma zero nao se aplica a ele da mesma forma que a uma
- * transferencia — por isso a funcao recebe o tipo e trata cada caso explicitamente, em vez
- * de aplicar uma regra unica que estaria errada para algum deles.
+ * O mesmo padrao aparecia em `handlerFactory.ts` (autorizacao de nucleo condicional a
+ * existencia do campo `nucleusId`). Sao a mesma classe de falha, e por isso a regra vale
+ * para todo o projeto: o caminho inseguro nao pode ser o caminho silencioso.
  */
 
 export interface LedgerLeg {
@@ -24,10 +20,18 @@ export interface LedgerLeg {
   readonly amountCents: number;
 }
 
+export type ResourceNatureKind = 'MONEY' | 'BENEFIT' | 'LIABILITY';
+
 export interface LedgerInvariantInput {
   readonly movementType: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT';
   readonly description: string;
   readonly legs: readonly LedgerLeg[];
+  /**
+   * Natureza de CADA recurso referenciado por alguma leg. Obrigatorio e completo: se faltar
+   * a natureza de qualquer partida, o invariante LANCA em vez de pular a conferencia.
+   * Sem isso a verificacao de sinal falharia aberta (ver diretriz acima).
+   */
+  readonly resourceNatures: ReadonlyMap<string, ResourceNatureKind>;
 }
 
 /**
@@ -66,30 +70,27 @@ export interface LedgerInvariantInput {
  * (caso b); se ambas sao da mesma natureza ativa, e transferencia (caso a).
  */
 
-export interface LedgerLeg {
-  readonly resourceId: string;
-  readonly amountCents: number;
-}
-
-export interface LedgerInvariantInput {
-  readonly movementType: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT';
-  readonly description: string;
-  readonly legs: readonly LedgerLeg[];
-  /**
-   * Natureza do recurso de cada partida, para conferir o sinal em INCOME/EXPENSE.
-   * Opcional: quando ausente, apenas a cardinalidade e a nao-nulidade sao conferidas.
-   */
-  readonly resourceNatures?: ReadonlyMap<string, 'MONEY' | 'BENEFIT' | 'LIABILITY'>;
-}
-
 export function assertLedgerInvariants(input: LedgerInvariantInput): void {
-  const { movementType, legs } = input;
+  const { movementType, legs, resourceNatures } = input;
 
   if (legs.length === 0) {
     throw new DomainError(
       'LEDGER_MOVEMENT_WITHOUT_LEGS',
       `Movimento "${input.description}" não tem partidas: o efeito financeiro vive apenas nas pernas (ADR D-018).`,
     );
+  }
+
+  // FALHA FECHADA: a natureza de TODA partida precisa ser conhecida. Antes, um recurso
+  // ausente do mapa simplesmente escapava da conferencia de sinal — um EXPENSE positivo
+  // apontando para recurso inexistente passava. Recusar aqui e o que impede a ausencia de
+  // dado de virar ausencia de validacao.
+  for (const leg of legs) {
+    if (!resourceNatures.has(leg.resourceId)) {
+      throw new DomainError(
+        'LEDGER_UNKNOWN_RESOURCE_NATURE',
+        `Não foi possível determinar a natureza do recurso ${leg.resourceId} no movimento "${input.description}". A verificação contábil não pode ser feita e o lançamento foi recusado.`,
+      );
+    }
   }
 
   for (const leg of legs) {
@@ -119,13 +120,25 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
       );
     }
 
-    const originNature = input.resourceNatures?.get(origin.resourceId);
-    const destinationNature = input.resourceNatures?.get(destination.resourceId);
+    const originNature = resourceNatures.get(origin.resourceId)!;
+    const destinationNature = resourceNatures.get(destination.resourceId)!;
     const involvesLiability = originNature === 'LIABILITY' || destinationNature === 'LIABILITY';
 
     if (involvesLiability) {
-      // Liquidacao de passivo (pagamento de fatura): as DUAS pontas sao negativas — o
-      // dinheiro sai da conta e a divida do cartao e reduzida. O patrimonio cai duas vezes.
+      // Liquidacao de passivo so faz sentido entre DINHEIRO e CARTAO. Sem esta checagem, um
+      // TRANSFER de BENEFIT (VR) para LIABILITY (cartao) passava como liquidacao valida —
+      // "pagar a fatura com vale-alimentacao". O TransferPolicy bloqueia isso no caso de uso,
+      // mas o invariante na fronteira, que existe justamente para pegar caminhos novos de
+      // codigo, precisa bloquear tambem.
+      const counterpart = originNature === 'LIABILITY' ? destinationNature : originNature;
+      if (counterpart !== 'MONEY') {
+        throw new DomainError(
+          'LEDGER_LIABILITY_SETTLEMENT_REQUIRES_MONEY',
+          `Liquidação de passivo "${input.description}" deve ocorrer entre dinheiro e cartão; a outra ponta é ${counterpart}.`,
+        );
+      }
+      // As DUAS pontas sao negativas: o dinheiro sai da conta e a divida do cartao e
+      // reduzida. O patrimonio cai duas vezes.
       if (origin.amountCents >= 0 || destination.amountCents >= 0) {
         throw new DomainError(
           'LEDGER_LIABILITY_SETTLEMENT_MUST_DEBIT_BOTH',
@@ -141,7 +154,14 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
       return;
     }
 
-    // Transferencia entre ativos: as pontas se cancelam e o patrimonio NAO muda.
+    // Transferencia entre ativos: as pontas precisam ser da MESMA natureza (dinheiro com
+    // dinheiro, beneficio com beneficio) e se cancelam — o patrimonio NAO muda.
+    if (originNature !== destinationNature) {
+      throw new DomainError(
+        'LEDGER_TRANSFER_NATURE_MISMATCH',
+        `Transferência "${input.description}" mistura naturezas diferentes (${originNature} e ${destinationNature}).`,
+      );
+    }
     if (origin.amountCents + destination.amountCents !== 0) {
       throw new DomainError(
         'LEDGER_TRANSFER_NOT_BALANCED',
@@ -167,7 +187,7 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
   }
 
   if (movementType === 'EXPENSE') {
-    const nature = input.resourceNatures?.get(leg.resourceId);
+    const nature = resourceNatures.get(leg.resourceId)!;
     // Recurso de dinheiro/beneficio: saida debita o ativo, logo negativa.
     if (nature === 'MONEY' || nature === 'BENEFIT') {
       if (leg.amountCents >= 0) {
@@ -184,6 +204,20 @@ export function assertLedgerInvariants(input: LedgerInvariantInput): void {
         `Compra no cartão "${input.description}" deve aumentar o passivo (valor positivo); recebeu ${leg.amountCents}.`,
       );
     }
-    // Sem informacao de natureza, nao ha como conferir o sinal sem risco de falso positivo.
+    return;
+  }
+
+  if (movementType === 'ADJUSTMENT') {
+    // O delta pode ter qualquer sinal (corrige para cima ou para baixo), mas nao pode zerar
+    // um PASSIVO: baixar a divida de cartao exige um pagamento real, nao um ajuste. Sem esta
+    // regra, um ADJUSTMENT negativo no cartao perdoava a divida inteira sem lastro — e o
+    // saldo passava a mentir para menos.
+    const nature = resourceNatures.get(leg.resourceId)!;
+    if (nature === 'LIABILITY' && leg.amountCents < 0) {
+      throw new DomainError(
+        'LEDGER_ADJUSTMENT_CANNOT_FORGIVE_LIABILITY',
+        `Ajuste "${input.description}" não pode reduzir a dívida de um cartão. Use o pagamento de fatura, que registra a saída do dinheiro.`,
+      );
+    }
   }
 }

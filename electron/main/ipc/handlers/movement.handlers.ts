@@ -16,6 +16,8 @@ import {
 } from '../../../../src/shared/ipc-contract';
 import { toMovementDto } from '../dto';
 import { IpcContext, handleAuthenticated } from '../register';
+import { NotFoundError } from '../../../../src/domain/errors/DomainError';
+import { assertNucleusAccess } from '../handlerFactory';
 
 /**
  * Todo `createdByPersonId`/`actorPersonId` passado aos casos de uso abaixo vem de
@@ -51,6 +53,10 @@ export function registerMovementHandlers(ctx: IpcContext): void {
     return new CreateAdjustment(ctx.uow).execute({ ...payload, createdByPersonId: auth.personId });
   });
 
+  // `movement:cancel` não recebe nucleusId no payload (só o movementId), então declara
+  // explicitamente como autorizar: resolve o núcleo REAL do movimento e confirma que a
+  // pessoa atual é membro dele. Antes isso era implícito, e um canal sem nucleusId passava
+  // sem nenhuma verificação (ver a diretriz fail-closed em handlerFactory.ts).
   handleAuthenticated(ctx, CHANNELS.movementCancel, CancelMovementSchema, async (payload, auth) => {
     await new CancelMovement(ctx.uow).execute({
       movementId: payload.movementId,
@@ -58,6 +64,12 @@ export function registerMovementHandlers(ctx: IpcContext): void {
       actorPersonId: auth.personId,
     });
     return { cancelled: true };
+  }, {
+    authorize: async (payload, personId) => {
+      const movement = await ctx.repos.movements.findById(payload.movementId);
+      if (!movement) throw new NotFoundError('Movimentação', payload.movementId);
+      await assertNucleusAccess(ctx.repos, personId, movement.nucleusId);
+    },
   });
 
   handleAuthenticated<typeof ListMovementsSchema, MovementDto[]>(
