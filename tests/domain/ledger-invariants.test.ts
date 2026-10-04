@@ -160,14 +160,14 @@ describe('Invariantes contabeis do ledger', () => {
   });
 
   it('aceita ajuste positivo e negativo, mas nunca nulo', () => {
-    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste para cima', legs: [{ resourceId: 'conta', amountCents: 3000 }] })).not.toThrow();
-    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste para baixo', legs: [{ resourceId: 'conta', amountCents: -3000 }] })).not.toThrow();
-    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste nulo', legs: [{ resourceId: 'conta', amountCents: 0 }] })).toThrowError(expect.objectContaining({ code: 'LEDGER_ZERO_LEG' }));
+    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste para cima', legs: [{ resourceId: 'conta', amountCents: 3000 }], resourceNatures: ativos })).not.toThrow();
+    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste para baixo', legs: [{ resourceId: 'conta', amountCents: -3000 }], resourceNatures: ativos })).not.toThrow();
+    expect(() => assertLedgerInvariants({ movementType: 'ADJUSTMENT', description: 'Ajuste nulo', legs: [{ resourceId: 'conta', amountCents: 0 }], resourceNatures: ativos })).toThrowError(expect.objectContaining({ code: 'LEDGER_ZERO_LEG' }));
   });
 
   it('recusa movimento sem partidas e partida de valor zero', () => {
-    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Sem partidas', legs: [] })).toThrowError(expect.objectContaining({ code: 'LEDGER_MOVEMENT_WITHOUT_LEGS' }));
-    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Partida nula', legs: [{ resourceId: 'conta', amountCents: 0 }] })).toThrowError(expect.objectContaining({ code: 'LEDGER_ZERO_LEG' }));
-    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Centavos fracionados', legs: [{ resourceId: 'conta', amountCents: -10.5 }] })).toThrowError(expect.objectContaining({ code: 'LEDGER_LEG_NOT_INTEGER' }));
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Sem partidas', legs: [], resourceNatures: ativos })).toThrowError(expect.objectContaining({ code: 'LEDGER_MOVEMENT_WITHOUT_LEGS' }));
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Partida nula', legs: [{ resourceId: 'conta', amountCents: 0 }], resourceNatures: ativos })).toThrowError(expect.objectContaining({ code: 'LEDGER_ZERO_LEG' }));
+    expect(() => assertLedgerInvariants({ movementType: 'EXPENSE', description: 'Centavos fracionados', legs: [{ resourceId: 'conta', amountCents: -10.5 }], resourceNatures: ativos })).toThrowError(expect.objectContaining({ code: 'LEDGER_LEG_NOT_INTEGER' }));
   });
 });
