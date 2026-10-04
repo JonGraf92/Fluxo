@@ -7,39 +7,59 @@ Os dados financeiros vivem no seu dispositivo. Nada é enviado para servidores e
 
 ## Status desta entrega
 
-Este código passou por duas rodadas: a V1.0.0 (arquitetura completa) e a V1.0.1, um
-**hardening obrigatório antes do primeiro uso real**, que corrigiu:
+> **Revisão de veracidade (2026-10).** Este bloco foi corrigido: o README afirmava que o
+> código "nunca foi compilado nem executado" e citava uma versão (V1.0.1) diferente do
+> `package.json` (1.0.0). O projeto **está** versionado, compila, tem CI verde e a suíte
+> roda.
 
-1. Exportação não incluía os ajustes de verdade (só o efeito numérico, não o motivo).
-2. `local_identity` não tinha garantia de singleton — uma segunda tentativa de onboarding
-   podia criar uma segunda identidade/núcleo silenciosamente.
-3. `createdByPersonId`/`actorPersonId`/`ownerPersonId` eram aceitos do payload enviado
-   pelo renderer, em vez de derivados da identidade local no processo `main`.
-4. Autorização de núcleo não era verificada de forma consistente na fronteira de IPC.
-5. Havia três implementações divergentes de parsing de valores monetários, uma delas com
-   um bug real de interpretação (`"10.50"` virava R$ 1.050,00).
+Estado real, com evidência de execução:
 
-Os detalhes de cada correção estão em `docs/adr/D-024` a `D-028`, e os testes
-correspondentes em `tests/security/` e `tests/application/`.
+| Verificação | Resultado |
+|---|---|
+| `npm run typecheck` | passa |
+| `npm test` | **108 testes, 33 arquivos** |
+| `npm run build` | passa (Vite + Electron) |
+| CI (GitHub Actions, `windows-latest`) | verde |
 
-Nenhuma funcionalidade nova foi adicionada nesta rodada — só correções.
+Repositório: `JonGraf92/Fluxo`. Node 24.21.0 e npm 11.16.0 (ver `.nvmrc` e `package.json`).
 
-Este código foi escrito integralmente (domínio, aplicação, infraestrutura, IPC, UI e
-testes), mas **ainda não foi compilado nem executado** neste ambiente de geração — o
-sandbox usado para escrever o projeto não tem acesso à internet para baixar as
-dependências do `npm install`. Ele passou por revisão estática (imports, exports,
-balanceamento de chaves, consistência de caminhos), mas o primeiro passo real é local:
+**Correção de infraestrutura:** `npm test` usava `electron --run-as-node`, flag que **não
+existe** no Electron (o correto é a variável `ELECTRON_RUN_AS_NODE=1`). O comando nunca
+havia funcionado, e o `ci.yml` — que o executa — sempre falharia. Os números acima são,
+portanto, os **primeiros** resultados reais de teste do projeto.
+
+### Hardening aplicado (ADRs D-024 a D-033)
+
+As cinco correções originais (D-024 a D-028) estão implementadas e testadas. Uma auditoria
+independente encontrou depois mais seis defeitos, todos corrigidos com teste de regressão:
+
+1. **Saldo inicial era editável pelo renderer**, violando o ADR D-020 — reescrita de saldo
+   sem gerar movimento e **sem aparecer na exportação** (D-029).
+2. **Baixa parcial de parcela quitava a dívida inteira** — R$ 0,01 quitava R$ 5.000 (D-031).
+3. **TOCTOU no pagamento de fatura** — dois toques debitavam o caixa duas vezes (D-031).
+4. **`DeleteFinancingPlan` fazia delete físico** e apagava histórico de parcelas pagas (D-031).
+5. **Saldo devedor da fatura era calculado por texto** (`description.startsWith(...)`) —
+   renomear ou traduzir a mensagem faria o app cobrar de novo uma fatura já paga (D-032).
+6. **O invariante contábil falhava aberto** — natureza de recurso desconhecida pulava a
+   verificação, e um `EXPENSE` positivo em recurso inexistente passava. A mesma falha
+   existia na autorização de núcleo (D-030).
+
+Somam-se correções de fronteira do Electron: `shell.openExternal` sem validar esquema,
+`will-navigate` aceitando qualquer `file://` e exportação gravando em caminho escolhido pelo
+renderer (D-033).
+
+> **Achado relevante sobre a suíte:** três testes **sancionavam os defeitos** — afirmavam que
+> o comportamento errado era o correto. Corrigir o código sem corrigir esses testes criaria
+> um conflito falso, e a "correção" acabaria revertida.
+
+Para rodar localmente:
 
 ```bash
-npm install
-npm run typecheck   # confirma que tudo compila
-npm test            # roda os testes de domínio, aplicação e segurança
-npm run rebuild:electron && npm run dev   # roda a aplicação de verdade
+npm ci
+npm run typecheck
+npm test
+npm run dev
 ```
-
-Se o `typecheck` ou os testes acusarem algo, é esperado que sejam ajustes pontuais — a
-arquitetura, o modelo de dados e as regras financeiras foram implementados seguindo à
-risca o que está documentado em `docs/adr/`.
 
 ## Princípios
 

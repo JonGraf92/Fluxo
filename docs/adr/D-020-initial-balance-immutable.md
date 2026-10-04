@@ -19,5 +19,8 @@ obrigatoriamente um `ADJUSTMENT` (ver D-019), auditado e visível no histórico.
 ## Consequências
 - Fórmula de saldo é sempre: `initial_balance_cents + Σ legs confirmadas`. Nunca um número
   solto que alguém sobrescreve.
-- Testado explicitamente: `tests/domain/initial-balance-immutability.test.ts` — tentativa
-  de alterar o valor inicial após criação deve lançar `DomainError`.
+- **Nota de correção (2026-10):** este ADR citava `tests/domain/initial-balance-immutability.test.ts`,
+  arquivo que **nunca existiu**. A garantia era declarada, não verificada — e foi violada pelo
+  caminho mais curto possível, com um teste que afirmava o comportamento errado como correto.
+  A imutabilidade passou a ser **estrutural** em D-029, e a prova está em
+  `tests/application/application-resource-liquidity.test.ts`.

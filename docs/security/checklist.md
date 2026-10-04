@@ -1,42 +1,66 @@
 # Checklist de segurança — Electron + Fluxo
 
-## Electron (seção 36)
-- [x] `nodeIntegration: false` no `BrowserWindow`
-- [x] `contextIsolation: true`
-- [x] `sandbox: true` no renderer
-- [x] Preload expõe só `window.fluxo.*` via `contextBridge`, nenhuma API Node direta
+> **Nota de verificação.** Este checklist era 100% aspiracional: todos os itens marcados
+> `[x]`, incluindo um que apontava para `src/infrastructure/logging` — diretório que **nunca
+> existiu**. Em 2026-10 uma auditoria independente encontrou três falhas reais de fronteira
+> que este documento dava como cumpridas. Ele foi reescrito para registrar **evidência** e
+> distinguir o que é verificado do que é pendente.
+
+## Electron — verificado no código
+- [x] `nodeIntegration: false` — `electron/main/window.ts`
+- [x] `contextIsolation: true` — `electron/main/window.ts`
+- [x] `sandbox: true` no renderer — `electron/main/window.ts`
+- [x] Preload expõe só `window.fluxo.*` via `contextBridge`, sem API Node direta —
+      `electron/preload/index.ts`
 - [x] Sem `remote` module
-- [x] CSP restritiva no `index.html` do renderer (sem scripts inline, sem `eval`)
-- [x] `webSecurity` habilitado (padrão, nunca desabilitado)
-- [x] Navegação externa (`will-navigate`, `setWindowOpenHandler`) bloqueada/whitelisted
+- [x] CSP restritiva no `index.html` do renderer (sem script inline, sem `eval`)
+- [x] `webSecurity` habilitado (nunca desabilitado)
+- [x] `shell.openExternal` **valida o esquema antes** de chamar o sistema operacional —
+      apenas `http:`/`https:`; `ms-msdt:`, `search-ms:` e `smb://` são descartados
+      (ADR D-033)
+- [x] `will-navigate` e `will-frame-navigate` aceitam **apenas** o próprio entrypoint do
+      app; o servidor de desenvolvimento só vale com `isDev` verdadeiro (ADR D-033)
+- [x] Exportação grava **somente** no caminho aprovado pelo usuário no diálogo nativo; o
+      `destinationPath` do payload é ignorado (ADR D-033)
 
-## Dados
+## Dados — verificado no código
 - [x] Todas as queries via Kysely (parametrizadas) — nenhuma concatenação de string SQL
-- [x] Validação de entrada com Zod em toda fronteira IPC, antes de chegar no caso de uso
-      (schemas de mutação usam `.strict()` — campos inesperados são rejeitados, não
-      silenciosamente ignorados)
-- [x] Validação de domínio (invariantes) na camada `domain`, independente da UI
-- [x] `createdByPersonId`/`actorPersonId`/`ownerPersonId` são SEMPRE derivados da
-      identidade local (`local_identity`) no processo `main` — nunca aceitos do payload
-      do renderer (ADR D-024, `electron/main/ipc/handlerFactory.ts`)
-- [x] Toda chamada de IPC cujo payload tenha `nucleusId` é autorizada contra a identidade
-      local antes de chegar ao caso de uso (ADR D-025); `movement:cancel`, que não carrega
-      `nucleusId`, autoriza a partir do núcleo real da movimentação dentro do próprio
-      caso de uso
-- [x] `local_identity` é um singleton garantido em duas camadas — checagem explícita em
-      `CompleteOnboarding` e `PRIMARY KEY` fixa no banco (ADR D-026)
+- [x] Validação de entrada com Zod em toda fronteira IPC, antes do caso de uso (schemas de
+      mutação usam `.strict()` — campo inesperado é rejeitado, não ignorado)
+- [x] `createdByPersonId`/`actorPersonId`/`ownerPersonId` são SEMPRE derivados da identidade
+      local no processo `main`, nunca aceitos do payload (ADR D-024)
+- [x] **Autorização de núcleo falha FECHADA**: canal sem `nucleusId` precisa declarar
+      `authorize` explícito; sem isso a operação é **recusada** (ADR D-030). Antes, a
+      ausência do campo significava "sem verificação"
+- [x] `local_identity` é singleton garantido em duas camadas — checagem explícita em
+      `CompleteOnboarding` e `PRIMARY KEY` fixa (ADR D-026)
 - [x] Nenhum dado financeiro sai da máquina (sem telemetry, sem analytics externo)
-- [x] Logs não incluem CPF, número de conta completo, dados de cartão ou valores
-      financeiros desnecessários (ver `src/infrastructure/logging`)
+- [x] Invariantes contábeis verificados na fronteira de persistência, falhando fechado
+      (ADR D-030)
 
-## Testes de segurança (seção 44, `tests/security/`)
+## Dados — pendente (não verificado)
+- [ ] Logs não incluem CPF, conta, cartão ou valores. **Não há camada de logging
+      implementada** — o item anterior apontava para um diretório inexistente. Enquanto não
+      existir, a afirmação não pode ser feita. O único log hoje é `console.error` de erro
+      inesperado em `handlerFactory.ts`, que registra o objeto de erro, não dados do usuário
+- [ ] `dateFrom`/`dateTo` em `ListMovementsSchema` são `z.string()` livre, enquanto
+      `IsoDateSchema` existe e é usado em outros schemas — inconsistência de validação
+- [ ] Sem `session.setPermissionRequestHandler` nem tratamento de `will-attach-webview`
+
+## Testes de segurança (`tests/security/`)
 - [x] Tentativa de acessar recurso de outro núcleo é rejeitada pelo caso de uso
 - [x] IDs manipulados (UUID de outro núcleo) não retornam dados de outro contexto
 - [x] Entrada maliciosa em campos de texto (ex.: `'; DROP TABLE movements;--`) não afeta o
       banco (garantido pela parametrização do Kysely — testado mesmo assim)
 - [x] Payload de IPC malformado é rejeitado pelo Zod antes de qualquer efeito colateral
-- [x] Um payload com `createdByPersonId` forjado é rejeitado inteiramente, e uma chamada
-      legítima é sempre atribuída à identidade local real —
+- [x] Payload com `createdByPersonId` forjado é rejeitado inteiramente —
       `tests/security/ipc-identity-spoofing.test.ts` (ADR D-024)
-- [x] Um `nucleusId` sintaticamente válido mas de outro núcleo é rejeitado —
-      `tests/security/nucleus-authorization.test.ts` (ADR D-025)
+- [x] Natureza de recurso desconhecida no ledger é recusada — `tests/domain/ledger-invariants.test.ts`
+- [x] Varredura de integridade detecta inconsistências pré-existentes no banco —
+      `tests/infrastructure/integrity-scan.test.ts`
+
+## Antes de abrir ao público (bloqueante)
+- [ ] Política de Privacidade e Termos de Uso (CDC art. 6º, III; LGPD art. 9º)
+- [ ] Base legal mapeada para dado de Open Finance e fluxo de eliminação pós-revogação
+- [ ] Assinatura de código do instalável
+- [ ] Revisão de dependências (SBOM) e política de atualização do Electron
