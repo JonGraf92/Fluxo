@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
-import { runMigrations } from '../src/infrastructure/db/migrate';
-import { Database as DbSchema } from '../src/infrastructure/db/types';
+import { runMigrations } from './migrate';
+import { Database as DbSchema } from './types';
 
 /**
  * Varredura de integridade do ledger.
