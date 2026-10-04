@@ -29,7 +29,8 @@
     "test:node": "vitest run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./run-vitest-electron.mjs --watch",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "integrity:scan": "node scripts/integrity-scan.mjs"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

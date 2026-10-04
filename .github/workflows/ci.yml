@@ -32,5 +32,8 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Integrity scan
+        run: npm run integrity:scan
+
       - name: Build
         run: npm run build
