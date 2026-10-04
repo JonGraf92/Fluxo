@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { CreateExpense } from '../src/application/use-cases/movement/CreateExpense';
-import { CreateIncome } from '../src/application/use-cases/movement/CreateIncome';
-import { CreateTransfer } from '../src/application/use-cases/movement/CreateTransfer';
-import { CreateResource } from '../src/application/use-cases/resource/CreateResource';
-import { scanIntegrity } from '../src/infrastructure/db/integrityScan';
-import { createTestDb, TestDb } from './testDb';
-import { seedPersonAndNucleus, seedResource } from './seed';
+import { CreateExpense } from '../../src/application/use-cases/movement/CreateExpense';
+import { CreateIncome } from '../../src/application/use-cases/movement/CreateIncome';
+import { CreateTransfer } from '../../src/application/use-cases/movement/CreateTransfer';
+import { CreateResource } from '../../src/application/use-cases/resource/CreateResource';
+import { scanIntegrity } from '../../src/infrastructure/db/integrityScan';
+import { createTestDb, TestDb } from '../testDb';
+import { seedPersonAndNucleus, seedResource } from '../seed';
 
 /**
  * Varredura de integridade do ledger sobre os dados REAIS de um banco.
