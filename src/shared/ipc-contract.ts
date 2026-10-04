@@ -241,11 +241,15 @@ export const GetDashboardSummarySchema = z
   .strict();
 export type GetDashboardSummaryPayload = z.infer<typeof GetDashboardSummarySchema>;
 
-export const ExportChooseDestinationSchema = z.object({ format: z.enum(['csv', 'json']) }).strict();
+// O núcleo entra aqui porque o caminho aprovado no diálogo é guardado por núcleo no
+// processo main — o renderer nunca decide onde gravar (ver export.handlers.ts).
+export const ExportChooseDestinationSchema = z.object({ nucleusId: z.string().uuid(), format: z.enum(['csv', 'json']) }).strict();
 export const ExportRunSchema = z
   .object({
     nucleusId: z.string().uuid(),
     format: z.enum(['csv', 'json']),
+    // Mantido no contrato por compatibilidade do renderer, mas IGNORADO na gravação: o
+    // destino real é sempre o caminho que o usuário aprovou no diálogo do sistema.
     destinationPath: z.string().min(1),
   })
   .strict();

@@ -37,7 +37,7 @@ export function SettingsScreen({ session, theme, onThemeChange }: { session: App
   async function runExport(format: 'csv' | 'json') {
     setExporting(format);
     try {
-      const destination = await api().export.chooseDestination(format);
+      const destination = await api().export.chooseDestination(session.nucleusId, format);
       if (destination.canceled || !destination.filePath) {
         setExporting(null);
         return;

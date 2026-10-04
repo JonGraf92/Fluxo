@@ -104,8 +104,10 @@ const api = {
       invoke<DashboardSummaryDto>(CHANNELS.dashboardGetSummary, payload),
   },
   export: {
-    chooseDestination: (format: 'csv' | 'json') =>
-      invoke<{ canceled: boolean; filePath: string | null }>(CHANNELS.exportChooseDestination, { format }),
+    // O nucleusId é necessário porque o processo main guarda, POR NÚCLEO, o caminho que o
+    // usuário aprovou no diálogo do sistema — e passa a gravar sempre nele.
+    chooseDestination: (nucleusId: string, format: 'csv' | 'json') =>
+      invoke<{ canceled: boolean; filePath: string | null }>(CHANNELS.exportChooseDestination, { nucleusId, format }),
     run: (payload: ExportRunPayload) => invoke<{ filePath: string }>(CHANNELS.exportRun, payload),
   },
 };

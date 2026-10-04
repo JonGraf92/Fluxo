@@ -35,8 +35,12 @@ export function handleAuthenticated<Schema extends z.ZodTypeAny, Result>(
   channel: string,
   schema: Schema,
   fn: (payload: z.infer<Schema>, auth: AuthContext) => Promise<Result>,
+  options?: {
+    /** Canais sem `nucleusId` no payload declaram explicitamente como autorizar. */
+    authorize?: (payload: z.infer<Schema>, personId: string) => Promise<void>;
+  },
 ): void {
-  const handler = buildAuthenticatedHandler(ctx, channel, schema, fn);
+  const handler = buildAuthenticatedHandler(ctx, channel, schema, fn, options);
   ipcMain.handle(channel, async (_event, rawPayload) => handler(rawPayload));
 }
 
