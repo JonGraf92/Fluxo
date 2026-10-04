@@ -7,15 +7,16 @@ import { startVitest } from 'vitest/node';
  * Node exigiria recompilar o modulo nativo. Definir ELECTRON_RUN_AS_NODE=1 (em package.json)
  * faz o binario se comportar como Node, mantendo a ABI correta.
  *
- * DEFEITO CORRIGIDO — o runner lia o resultado CEDO DEMAIS:
- * `startVitest()` resolve assim que o servidor de teste sobe, NAO quando a suite termina.
- * A versao anterior lia `vitest.state.getFiles()` imediatamente e, se algum arquivo ainda
- * estivesse rodando, o fallback `?? true` classificava como falha e chamava `process.exit(1)`
- * — matando a suite no meio. O sintoma era uma execucao que morria sem nenhuma falha real,
- * com o aviso "Detected unsettled top-level await".
+ * DEFEITO CORRIGIDO — o runner original lia o resultado CEDO DEMAIS:
+ * `startVitest()` aguarda a execucao, mas a versao anterior lia
+ * `vitest.state.getFiles()` e usava `?? true` como fallback. Quando a leitura acontecia
+ * antes de algum arquivo terminar, o fallback classificava como falha e chamava
+ * `process.exit(1)` — matando a suite no meio, com o aviso "Detected unsettled top-level
+ * await". O sintoma era uma execucao reprovada sem nenhuma assercao falhando.
  *
- * A correcao usa `waitForTestsToFinishRunning()`, que e a API que de fato aguarda a
- * conclusao, e deriva o codigo de saida das contagens que ela devolve.
+ * A correcao NAO reimplementa a decisao: o proprio Vitest ja marca `process.exitCode = 1`
+ * ao detectar falha (ver `hasFailed(files)` em cli-api). Apenas deixamos o processo encerrar
+ * normalmente e conferimos o estado final para reportar de forma legivel.
  */
 const watch = process.argv.includes('--watch');
 
@@ -31,18 +32,30 @@ if (!watch) {
     process.exit(1);
   }
 
-  // Aguarda a suite INTEIRA terminar antes de decidir o codigo de saida.
-  const result = await vitest.waitForTestsToFinishRunning();
+  // Aguarda qualquer execucao ainda em andamento antes de ler o estado. `runningPromise`
+  // pode ser undefined se a rodada ja terminou — nesse caso nao ha o que esperar.
+  await vitest.runningPromise;
   await vitest.close();
 
-  if (!result) {
-    console.error('A suite terminou sem resultado legivel.');
-    process.exit(1);
+  const files = vitest.state.getFiles();
+  const failedFiles = files.filter((file) => file.result?.state === 'fail');
+  const passedFiles = files.filter((file) => file.result?.state === 'pass');
+
+  console.log('');
+  console.log(`Arquivos: ${passedFiles.length} passaram, ${failedFiles.length} falharam (${files.length} no total)`);
+
+  for (const file of failedFiles) {
+    console.error(`  FALHOU: ${file.filepath}`);
   }
 
-  const failedTests = result.failedTests ?? 0;
-  const failedFiles = result.failedFiles ?? 0;
-  const succeeded = result.success ?? false;
-
-  process.exit(succeeded && failedTests === 0 && failedFiles === 0 ? 0 : 1);
+  // O Vitest ja ajustou process.exitCode; mantemos esse veredito e apenas garantimos que
+  // uma suite sem arquivo nenhum nao seja tratada como sucesso.
+  if (files.length === 0) {
+    console.error('Nenhum arquivo de teste foi executado.');
+    process.exit(1);
+  }
+  if (failedFiles.length > 0) {
+    process.exit(1);
+  }
+  process.exit(process.exitCode ?? 0);
 }
