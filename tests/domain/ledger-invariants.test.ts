@@ -131,7 +131,7 @@ describe('Invariantes contabeis do ledger', () => {
         { resourceId: 'b', amountCents: 2500 },
         { resourceId: 'c', amountCents: 2500 },
       ],
-      resourceNatures: ativos,
+      resourceNatures: new Map([['a', 'MONEY'], ['b', 'MONEY'], ['c', 'MONEY']] as const),
     })).toThrowError(expect.objectContaining({ code: 'LEDGER_TRANSFER_REQUIRES_TWO_LEGS' }));
   });
 
