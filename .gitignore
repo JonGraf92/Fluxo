@@ -11,6 +11,9 @@ fluxo.db-shm
 .vite/
 .cache/
 
+# Pasta de dados descartável para rodar o app em desenvolvimento (ADR D-034)
+.fluxo-dev-data/
+
 # Segredos e ambiente — defesa em profundidade.
 # Nenhum arquivo destes existe hoje; a regra evita que um futuro .env
 # com credenciais de Open Finance / provedor fiscal chegue ao repositório.

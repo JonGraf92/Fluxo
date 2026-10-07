@@ -11,8 +11,9 @@ export interface FluxoDb {
 }
 
 /**
- * Abre (ou cria) o banco SQLite local. `dataDir` é sempre o diretório de dados do usuário
- * (app.getPath('userData') no Electron) — nunca um caminho de rede (ADR D-001).
+ * Abre (ou cria) o banco SQLite local. `dataDir` é sempre o diretório resolvido por
+ * `resolveDataDir` (ADR D-034) — nunca a pasta da versão antiga nem um caminho de rede
+ * (ADR D-001).
  */
 export function openDatabase(dataDir: string, fileName = 'fluxo.db'): FluxoDb {
   fs.mkdirSync(dataDir, { recursive: true });
