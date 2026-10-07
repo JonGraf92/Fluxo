@@ -1,6 +1,6 @@
 import React from 'react';
 import { parseBrazilianCurrencyToCents } from '../../src/shared/money-parsing';
-import { formatCentsToBRL } from '../services/money';
+import { blurCurrencyField, focusCurrencyField, initialCurrencyFieldState, typeInCurrencyField } from './currencyFieldState';
 
 interface CurrencyInputProps {
   label: string;
@@ -16,13 +16,15 @@ interface CurrencyInputProps {
  * "1250,00") e delega a conversão ao parser canônico compartilhado — nunca reimplementa
  * a lógica de parsing aqui (ver correção de hardening V1.0.1: havia uma implementação
  * inline divergente e ambígua neste componente).
+ *
+ * Ao receber foco o campo esvazia e mostra só o que for digitado; ver currencyFieldState.ts.
  */
 export function CurrencyInput({ label, valueCents, onChangeCents, error, hint, allowNegative }: CurrencyInputProps) {
-  const [text, setText] = React.useState(valueCents !== null ? formatCentsToBRL(Math.abs(valueCents)).replace('R$', '').trim() : '');
+  const [field, setField] = React.useState(() => initialCurrencyFieldState(valueCents));
   const [parseError, setParseError] = React.useState<string | null>(null);
 
   function handleChange(raw: string) {
-    setText(raw);
+    setField((current) => typeInCurrencyField(current, raw));
     if (raw.trim() === '') {
       setParseError(null);
       onChangeCents(null);
@@ -67,8 +69,10 @@ export function CurrencyInput({ label, valueCents, onChangeCents, error, hint, a
           style={{ paddingLeft: 34, textAlign: 'right' }}
           inputMode="decimal"
           placeholder="0,00"
-          value={text}
+          value={field.text}
           onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => setField(focusCurrencyField)}
+          onBlur={() => setField(blurCurrencyField)}
         />
       </div>
       {effectiveError ? <span className="field-error">{effectiveError}</span> : hint ? <span className="field-hint">{hint}</span> : null}
