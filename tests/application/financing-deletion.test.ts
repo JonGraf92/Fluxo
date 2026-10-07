@@ -42,7 +42,9 @@ describe('Exclusao de financiamento preserva o historico', () => {
     expect((await db.repos.financings.findPlanById(planId))?.status).toBe('DELETED');
     expect(await db.repos.financings.listInstallments(planId)).toHaveLength(12);
 
-    const audit = db.raw.prepare("SELECT action, after_json FROM audit_logs WHERE entity_id = ? ORDER BY occurred_at DESC LIMIT 1").get(planId) as { action: string; after_json: string };
+    // `rowid` desempata: criacao e exclusao podem cair no mesmo milissegundo, e sem ele o
+    // SQLite pode devolver o CREATE como "o mais recente" (falha intermitente vista no CI).
+    const audit = db.raw.prepare("SELECT action, after_json FROM audit_logs WHERE entity_id = ? ORDER BY occurred_at DESC, rowid DESC LIMIT 1").get(planId) as { action: string; after_json: string };
     expect(audit.action).toBe('DELETE_FINANCING_PLAN');
     expect(JSON.parse(audit.after_json).status).toBe('DELETED');
   });
