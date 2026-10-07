@@ -1,13 +1,26 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CreateAdjustment } from '../../src/application/use-cases/movement/CreateAdjustment';
 import { ExportData } from '../../src/application/use-cases/export/ExportData';
+import { makeTempDir, removeTempDir } from '../fileDb';
 import { createTestDb, TestDb } from '../testDb';
 import { seedPersonAndNucleus, seedResource } from '../seed';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 describe('ExportData — ajustes exportados de verdade (ADR D-028)', () => {
   let db: TestDb;
-  afterEach(() => db?.close());
+  // Pasta própria por teste: com caminho fixo, duas suítes rodando ao mesmo tempo na mesma
+  // pasta disputavam o mesmo arquivo e uma apagava o que a outra ainda ia ler.
+  let exportDir: string;
+
+  beforeEach(() => {
+    exportDir = makeTempDir('exportacao');
+  });
+
+  afterEach(() => {
+    db?.close();
+    removeTempDir(exportDir);
+  });
 
   it('inclui o ajuste real no JSON exportado, com motivo e vínculo ao Movement', async () => {
     db = await createTestDb();
@@ -24,8 +37,7 @@ describe('ExportData — ajustes exportados de verdade (ADR D-028)', () => {
       clientOperationId: 'adj-export-1',
     });
 
-    const jsonPath = 'node_modules/.cache/fluxo-export-test.json';
-    await fs.mkdir('node_modules/.cache', { recursive: true });
+    const jsonPath = path.join(exportDir, 'exportacao.json');
     await new ExportData(db.repos).execute({ nucleusId: nucleus.id, format: 'json', destinationPath: jsonPath });
 
     const content = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
@@ -34,8 +46,6 @@ describe('ExportData — ajustes exportados de verdade (ADR D-028)', () => {
     expect(content.adjustments[0].reason).toBe('Conferência de saldo físico');
     expect(content.adjustments[0].movementId).toBe(adjustmentResult.movementId);
     expect(content.adjustments[0].resourceId).toBe(conta.id);
-
-    await fs.unlink(jsonPath);
   });
 
   it('inclui o motivo do ajuste como coluna no CSV exportado', async () => {
@@ -53,29 +63,23 @@ describe('ExportData — ajustes exportados de verdade (ADR D-028)', () => {
       clientOperationId: 'adj-export-2',
     });
 
-    const csvPath = 'node_modules/.cache/fluxo-export-test.csv';
-    await fs.mkdir('node_modules/.cache', { recursive: true });
+    const csvPath = path.join(exportDir, 'exportacao.csv');
     await new ExportData(db.repos).execute({ nucleusId: nucleus.id, format: 'csv', destinationPath: csvPath });
 
     const content = await fs.readFile(csvPath, 'utf-8');
 
     expect(content).toContain('motivo_ajuste');
     expect(content).toContain('Encontrei dinheiro esquecido');
-
-    await fs.unlink(csvPath);
   });
 
   it('exporta lista vazia de ajustes quando não há nenhum (não é um erro)', async () => {
     db = await createTestDb();
     const { nucleus } = await seedPersonAndNucleus(db);
 
-    const jsonPath = 'node_modules/.cache/fluxo-export-test-empty.json';
-    await fs.mkdir('node_modules/.cache', { recursive: true });
+    const jsonPath = path.join(exportDir, 'exportacao.json');
     await new ExportData(db.repos).execute({ nucleusId: nucleus.id, format: 'json', destinationPath: jsonPath });
 
     const content = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
     expect(content.adjustments).toEqual([]);
-
-    await fs.unlink(jsonPath);
   });
 });
