@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { CHANNELS } from '../../src/shared/ipc-contract';
 import type {
   AppStateDto,
+  BackupStatusDto,
   CancelMovementPayload,
   CategoryDto,
   CompleteOnboardingPayload,
@@ -109,6 +110,13 @@ const api = {
     chooseDestination: (nucleusId: string, format: 'csv' | 'json') =>
       invoke<{ canceled: boolean; filePath: string | null }>(CHANNELS.exportChooseDestination, { nucleusId, format }),
     run: (payload: ExportRunPayload) => invoke<{ filePath: string }>(CHANNELS.exportRun, payload),
+  },
+  backup: {
+    getStatus: (nucleusId: string) => invoke<BackupStatusDto>(CHANNELS.backupGetStatus, { nucleusId }),
+    // A pasta é escolhida no diálogo nativo do processo main; o renderer não envia caminho.
+    chooseDestination: (nucleusId: string) =>
+      invoke<{ canceled: boolean; status: BackupStatusDto }>(CHANNELS.backupChooseDestination, { nucleusId }),
+    runNow: (nucleusId: string) => invoke<BackupStatusDto>(CHANNELS.backupRunNow, { nucleusId }),
   },
 };
 

@@ -58,8 +58,10 @@ Para rodar localmente:
 npm ci
 npm run typecheck
 npm test
-npm run dev
 ```
+
+Para abrir o app, veja "Como executar (desenvolvimento)": sempre com `FLUXO_DATA_DIR`
+apontando para uma pasta descartável.
 
 ## Princípios
 
@@ -141,12 +143,29 @@ para continuar recebendo correções de segurança.
 
 ## Como executar (desenvolvimento)
 
-```bash
+O app roda as migrations sozinho ao abrir. Em desenvolvimento, aponte **sempre** a variável
+`FLUXO_DATA_DIR` para uma pasta descartável. A pasta `.fluxo-dev-data/`, na raiz do projeto,
+está no `.gitignore` para isso.
+
+PowerShell:
+
+```powershell
+$env:FLUXO_DATA_DIR = "$PWD\.fluxo-dev-data"
 npm run dev
 ```
 
+bash:
+
+```bash
+FLUXO_DATA_DIR="$PWD/.fluxo-dev-data" npm run dev
+```
+
 Isso sobe o Vite (renderer) e o Electron (main) juntos. Na primeira execução, o Fluxo cria
-o banco SQLite local e roda as migrations automaticamente.
+o banco SQLite nessa pasta e roda as migrations. Para recomeçar do zero, feche o app e
+apague a pasta.
+
+`FLUXO_DATA_DIR` precisa ser um caminho absoluto. Definida e vazia, relativa, ou apontando
+para a pasta de dados da versão antiga, o app mostra um erro e não abre (ver ADR D-034).
 
 ## Como testar
 
@@ -172,13 +191,28 @@ Gera o instalável em `release/` via `electron-builder` (dmg/nsis/AppImage confo
 
 Banco SQLite local, em:
 
-- macOS: `~/Library/Application Support/Fluxo/fluxo.db`
-- Windows: `%APPDATA%/Fluxo/fluxo.db`
-- Linux: `~/.config/Fluxo/fluxo.db`
+- macOS: `~/Library/Application Support/fluxo-v2/fluxo.db`
+- Windows: `%APPDATA%\fluxo-v2\fluxo.db`
+- Linux: `~/.config/fluxo-v2/fluxo.db`
 
-(caminho exato definido por `app.getPath('userData')` do Electron — ver `electron/main/index.ts`)
+O caminho é resolvido por `resolveDataDir` (`src/infrastructure/dataDir.ts`) e fixado no
+processo principal antes de qualquer banco ser aberto (ADR D-034). A variável de ambiente
+`FLUXO_DATA_DIR` troca o local por outro caminho absoluto.
+
+A pasta da versão antiga (`%APPDATA%\fluxo`, que no Windows é a mesma que `%APPDATA%\Fluxo`)
+**nunca** é usada: o app recusa abrir se o diretório resolvido for essa pasta, estiver dentro
+dela ou se chamar "fluxo". Se houver um `fluxo.db` antigo ali, o app só registra um aviso no
+log; não abre nem lê o arquivo.
 
 ## Backup / exportação
+
+**Backup automático (ADR D-035).** O Fluxo copia o banco pela API de backup do SQLite,
+confere a cópia e guarda as 14 mais novas como `fluxo-backup-AAAAMMDD-HHMMSS.db`. A cópia
+acontece ao fechar o app (se houve gravação) e uma vez por dia enquanto ele fica aberto.
+Em **Configurações → Backup automático** dá para ver a última cópia, escolher a pasta e
+copiar na hora. Sem escolha, a pasta é `backups` dentro do diretório de dados, no mesmo
+disco: escolha uma pasta fora do computador. Falha de backup aparece em diálogo e fica
+visível em Configurações. Para restaurar, siga `docs/process/restauracao-backup.md`.
 
 Menu **Configurações → Exportar dados** gera um arquivo CSV e/ou JSON com todas as
 movimentações confirmadas e canceladas, recursos e categorias — suficiente para reconstruir
