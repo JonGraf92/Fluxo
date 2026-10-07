@@ -147,6 +147,10 @@ export interface FinancingPlansTable {
   created_by_person_id: string;
   status: string;
   created_at: string;
+  /** Só para asset_type = 'LOAN' (ADR D-036); nulas nos demais. */
+  principal_amount_cents: number | null;
+  interest_rate_bps: number | null;
+  interest_rate_period: string | null;
 }
 
 export interface FinancingInstallmentsTable {

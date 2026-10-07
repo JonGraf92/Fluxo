@@ -1,9 +1,10 @@
 import { v4 as uuid } from 'uuid';
-import { FinancingInstallment, FinancingPlan, FinancingAssetType, allowedFinancingTerms, currentMonthInstallmentNearDate, financingDueDate } from '../../../domain/entities/Financing';
+import { FinancingInstallment, FinancingPlan, FinancingAssetType, LOAN_FINANCING_TYPE, LOAN_MAX_TERM_MONTHS, LoanTerms, allowedFinancingTerms, currentMonthInstallmentNearDate, financingCategoryName, financingDueDate } from '../../../domain/entities/Financing';
 import { DomainError, NotFoundError } from '../../../domain/errors/DomainError';
 import { Money } from '../../../domain/value-objects/Money';
 import { UnitOfWork } from '../../ports/UnitOfWork';
 import { buildAuditLog } from '../movement/shared';
+import { resolveLoanTerms } from './loanTerms';
 
 export interface CreateFinancingPlanInput {
   nucleusId: string;
@@ -16,6 +17,8 @@ export interface CreateFinancingPlanInput {
   responsiblePersonId: string;
   createdByPersonId: string;
   currentMonthInstallmentPaid?: boolean;
+  /** Obrigatório quando `assetType` é LOAN; proibido nos demais (ADR D-036). */
+  loan?: LoanTerms | null;
 }
 
 function validDate(value: string): boolean {
@@ -34,8 +37,15 @@ export class CreateFinancingPlan {
     }
     if (!validDate(input.firstDueDate)) throw new DomainError('FINANCING_FIRST_DUE_DATE_INVALID', 'Informe uma data válida para o primeiro vencimento.');
     if (!allowedFinancingTerms(input.assetType).includes(input.termMonths)) {
-      throw new DomainError('FINANCING_TERM_NOT_ALLOWED', 'O prazo não está disponível para esse tipo de financiamento.');
+      throw new DomainError(
+        'FINANCING_TERM_NOT_ALLOWED',
+        input.assetType === LOAN_FINANCING_TYPE
+          ? `Informe a quantidade de parcelas do empréstimo, de 1 a ${LOAN_MAX_TERM_MONTHS}.`
+          : 'O prazo não está disponível para esse tipo de financiamento.',
+      );
     }
+    const loan = resolveLoanTerms(input.assetType, input.loan);
+    const categoryName = financingCategoryName(input.assetType);
 
     return this.uow.run(async (repos) => {
       const [resource, membership, categories] = await Promise.all([
@@ -49,8 +59,8 @@ export class CreateFinancingPlan {
         throw new DomainError('FINANCING_PAYMENT_RESOURCE_INVALID', 'Vincule uma conta ou dinheiro físico para pagar as parcelas.');
       }
       if (!membership) throw new DomainError('MEMBER_NOT_IN_NUCLEUS', 'A pessoa responsável não pertence a este núcleo.');
-      const category = categories.find((item) => item.name === 'Financiamentos' && item.kind === 'EXPENSE');
-      if (!category) throw new DomainError('FINANCING_CATEGORY_MISSING', 'A categoria Financiamentos não está disponível neste núcleo.');
+      const category = categories.find((item) => item.name === categoryName && item.kind === 'EXPENSE');
+      if (!category) throw new DomainError('FINANCING_CATEGORY_MISSING', `A categoria ${categoryName} não está disponível neste núcleo.`);
 
       const now = new Date();
       const entryDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -64,7 +74,7 @@ export class CreateFinancingPlan {
         installmentAmountCents: Money.fromCents(input.installmentAmountCents).toCents(),
         firstDueDate: input.firstDueDate, paymentResourceId: resource.id,
         responsiblePersonId: input.responsiblePersonId, createdByPersonId: input.createdByPersonId,
-        status: 'ACTIVE', createdAt: now,
+        loan, status: 'ACTIVE', createdAt: now,
       };
       const installments: FinancingInstallment[] = Array.from({ length: plan.termMonths }, (_, index) => {
         const installmentNumber = index + 1;
@@ -88,7 +98,7 @@ export class CreateFinancingPlan {
       await repos.auditLogs.record(buildAuditLog({
         entityType: 'FinancingPlan', entityId: plan.id, action: 'CREATE_FINANCING_PLAN',
         actorPersonId: input.createdByPersonId, nucleusId: input.nucleusId,
-        after: { assetType: plan.assetType, termMonths: plan.termMonths, installmentAmountCents: plan.installmentAmountCents, firstDueDate: plan.firstDueDate, paymentResourceId: plan.paymentResourceId, entryDate, planStatus: completedPlan.status, installmentsMarkedPaidAtRegistration: historicalPaidCount, currentMonthInstallment, currentMonthInstallmentPaid: input.currentMonthInstallmentPaid ?? null },
+        after: { assetType: plan.assetType, termMonths: plan.termMonths, installmentAmountCents: plan.installmentAmountCents, firstDueDate: plan.firstDueDate, paymentResourceId: plan.paymentResourceId, entryDate, planStatus: completedPlan.status, installmentsMarkedPaidAtRegistration: historicalPaidCount, currentMonthInstallment, currentMonthInstallmentPaid: input.currentMonthInstallmentPaid ?? null, loan },
       }));
       return { planId: plan.id };
     });

@@ -23,5 +23,6 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   'Assinaturas',
   'Contas',
   'Financiamentos',
+  'Empréstimos',
   'Outros',
 ] as const;

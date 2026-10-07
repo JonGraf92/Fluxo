@@ -112,17 +112,31 @@ export const PayCreditInvoiceSchema = z.object({
 }).strict();
 export type PayCreditInvoicePayload = z.infer<typeof PayCreditInvoiceSchema>;
 
-export const FinancingAssetTypeSchema = z.enum(['HOUSE', 'APARTMENT', 'LAND', 'PROPERTY_CONSORTIUM', 'CAR', 'MOTORCYCLE', 'TRUCK', 'JET_SKI', 'VEHICLE_CONSORTIUM']);
+export const FinancingAssetTypeSchema = z.enum(['HOUSE', 'APARTMENT', 'LAND', 'PROPERTY_CONSORTIUM', 'CAR', 'MOTORCYCLE', 'TRUCK', 'JET_SKI', 'VEHICLE_CONSORTIUM', 'LOAN']);
+/**
+ * Condições do empréstimo (ADR D-036): valor em centavos e taxa em centésimos de ponto
+ * percentual (1,99% = 199), sempre inteiros. Obrigatórias para `assetType: 'LOAN'` e
+ * recusadas nos demais tipos — quem decide é o caso de uso, não este schema.
+ */
+export const LoanTermsSchema = z.object({
+  principalAmountCents: z.number().int().positive(),
+  interestRateBps: z.number().int().min(0).max(100_000),
+  interestRatePeriod: z.enum(['MONTH', 'YEAR']),
+}).strict();
+export type LoanTermsPayload = z.infer<typeof LoanTermsSchema>;
 export const CreateFinancingSchema = z.object({
   nucleusId: z.string().uuid(),
   assetType: FinancingAssetTypeSchema,
   description: z.string().trim().min(1).max(120),
-  termMonths: z.number().int().min(12).max(420),
+  // O mínimo por tipo (12 para veículo, 240 para imóvel, 1 para empréstimo) é conferido no
+  // caso de uso, por `allowedFinancingTerms`.
+  termMonths: z.number().int().min(1).max(420),
   installmentAmountCents: z.number().int().positive(),
   firstDueDate: IsoDateSchema,
   paymentResourceId: z.string().uuid(),
   responsiblePersonId: z.string().uuid(),
   currentMonthInstallmentPaid: z.boolean().optional(),
+  loan: LoanTermsSchema.optional(),
 }).strict();
 export type CreateFinancingPayload = z.infer<typeof CreateFinancingSchema>;
 export const ListFinancingsSchema = ListByNucleusSchema;
@@ -141,6 +155,7 @@ export type CancelFinancingPayload = z.infer<typeof CancelFinancingSchema>;
 export const UpdateFinancingSchema = z.object({
   nucleusId: z.string().uuid(), planId: z.string().uuid(), assetType: FinancingAssetTypeSchema,
   description: z.string().trim().min(1).max(120), installmentAmountCents: z.number().int().positive(),
+  loan: LoanTermsSchema.optional(),
 }).strict();
 export type UpdateFinancingPayload = z.infer<typeof UpdateFinancingSchema>;
 export const DeleteFinancingSchema = z.object({ nucleusId: z.string().uuid(), planId: z.string().uuid() }).strict();
@@ -312,11 +327,13 @@ export interface FinancingInstallmentDto {
 
 export interface FinancingPlanDto {
   id: string;
-  assetType: 'HOUSE' | 'APARTMENT' | 'LAND' | 'PROPERTY_CONSORTIUM' | 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'JET_SKI' | 'VEHICLE_CONSORTIUM';
+  assetType: 'HOUSE' | 'APARTMENT' | 'LAND' | 'PROPERTY_CONSORTIUM' | 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'JET_SKI' | 'VEHICLE_CONSORTIUM' | 'LOAN';
   description: string;
   termMonths: number;
   installmentAmountCents: number;
   firstDueDate: string;
+  /** Só para `assetType: 'LOAN'`; `null` nos financiamentos. */
+  loan: LoanTermsPayload | null;
   paymentResourceId: string;
   responsiblePersonId: string;
   status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DELETED';

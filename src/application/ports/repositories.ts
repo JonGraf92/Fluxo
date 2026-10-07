@@ -139,7 +139,7 @@ export interface FinancingRepository {
    */
   markInstallmentPaid(installmentId: string, paidAmountCents: number, paidAt: string, movementId: string, paymentResourceId: string): Promise<number>;
   setPlanStatus(planId: string, status: FinancingPlan['status']): Promise<void>;
-  updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents'>): Promise<void>;
+  updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents' | 'loan'>): Promise<void>;
   // Sem `deletePlan`: a exclusao de financiamento e soft delete via setPlanStatus(id, 'DELETED').
   // Remover a operacao de DELETE fisico e o que impede o apagamento de historico ja confirmado.
 }

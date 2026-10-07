@@ -14,6 +14,7 @@ export function registerFinancingHandlers(ctx: IpcContext): void {
     return records.map(({ plan, installments }) => ({
       id: plan.id, assetType: plan.assetType, description: plan.description, termMonths: plan.termMonths,
       installmentAmountCents: plan.installmentAmountCents, firstDueDate: plan.firstDueDate,
+      loan: plan.loan ? { principalAmountCents: plan.loan.principalAmountCents, interestRateBps: plan.loan.interestRateBps, interestRatePeriod: plan.loan.interestRatePeriod } : null,
       paymentResourceId: plan.paymentResourceId, responsiblePersonId: plan.responsiblePersonId, status: plan.status,
       installments: installments.map((item) => ({ id: item.id, installmentNumber: item.installmentNumber, dueDate: item.dueDate, amountCents: item.amountCents, paidAmountCents: item.paidAmountCents, status: item.status, paidAt: item.paidAt, paymentMovementId: item.paymentMovementId, paymentResourceId: item.paymentResourceId })),
     }));
