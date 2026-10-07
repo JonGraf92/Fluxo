@@ -1,5 +1,6 @@
 import { Kysely } from 'kysely';
-import { FinancingInstallment, FinancingPlan, FinancingPlanWithInstallments, FinancingAssetType } from '../../domain/entities/Financing';
+import { FinancingInstallment, FinancingPlan, FinancingPlanWithInstallments, FinancingAssetType, LOAN_FINANCING_TYPE, LoanInterestRatePeriod, LoanTerms, loanTermsProblem } from '../../domain/entities/Financing';
+import { DomainError } from '../../domain/errors/DomainError';
 import { FinancingRepository } from '../../application/ports/repositories';
 import { Database } from '../db/types';
 
@@ -21,6 +22,7 @@ export class KyselyFinancingRepository implements FinancingRepository {
       created_by_person_id: plan.createdByPersonId,
       status: plan.status,
       created_at: plan.createdAt.toISOString(),
+      ...this.loanColumns(plan),
     }).execute();
 
     if (installments.length) {
@@ -94,9 +96,10 @@ export class KyselyFinancingRepository implements FinancingRepository {
     await this.db.updateTable('financing_plans').set({ status }).where('id', '=', planId).execute();
   }
 
-  async updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents'>): Promise<void> {
+  async updateDetails(planId: string, values: Pick<FinancingPlan, 'assetType' | 'description' | 'installmentAmountCents' | 'loan'>): Promise<void> {
     await this.db.updateTable('financing_plans').set({
       asset_type: values.assetType, description: values.description, installment_amount_cents: values.installmentAmountCents,
+      ...this.loanColumns(values),
     }).where('id', '=', planId).execute();
     await this.db.updateTable('financing_installments').set({ amount_cents: values.installmentAmountCents })
       .where('plan_id', '=', planId).where('status', '=', 'PENDING').execute();
@@ -105,6 +108,45 @@ export class KyselyFinancingRepository implements FinancingRepository {
   // O metodo `deletePlan` foi REMOVIDO de proposito: ele fazia DELETE fisico em
   // financing_plans e financing_installments, apagando historico de parcelas ja pagas.
   // A exclusao de um financiamento agora e soft delete via setPlanStatus(id, 'DELETED').
+
+  /**
+   * Fronteira de persistência (ADR D-030, D-036): empréstimo sem condições válidas, ou
+   * condições de empréstimo num plano que não é empréstimo, não é gravado — mesmo que um
+   * caso de uso esqueça de validar.
+   */
+  private loanColumns(plan: Pick<FinancingPlan, 'assetType' | 'loan'>): Pick<Database['financing_plans'], 'principal_amount_cents' | 'interest_rate_bps' | 'interest_rate_period'> {
+    if (plan.assetType !== LOAN_FINANCING_TYPE) {
+      if (plan.loan !== null) {
+        throw new DomainError('LOAN_TERMS_NOT_ALLOWED', 'Valor emprestado e taxa de juros só existem em planos do tipo Empréstimo.');
+      }
+      return { principal_amount_cents: null, interest_rate_bps: null, interest_rate_period: null };
+    }
+    if (plan.loan === null || loanTermsProblem(plan.loan) !== null) {
+      throw new DomainError('LOAN_TERMS_REQUIRED', 'Empréstimo precisa de valor emprestado e taxa de juros válidos.');
+    }
+    return {
+      principal_amount_cents: plan.loan.principalAmountCents,
+      interest_rate_bps: plan.loan.interestRateBps,
+      interest_rate_period: plan.loan.interestRatePeriod,
+    };
+  }
+
+  /** Falha fechado na leitura: linha de empréstimo com condições incompletas não vira plano "sem taxa". */
+  private mapLoan(row: Database['financing_plans']): LoanTerms | null {
+    if (row.asset_type !== LOAN_FINANCING_TYPE) return null;
+    const loan: LoanTerms | null =
+      row.principal_amount_cents !== null && row.interest_rate_bps !== null && row.interest_rate_period !== null
+        ? {
+            principalAmountCents: row.principal_amount_cents,
+            interestRateBps: row.interest_rate_bps,
+            interestRatePeriod: row.interest_rate_period as LoanInterestRatePeriod,
+          }
+        : null;
+    if (loan === null || loanTermsProblem(loan) !== null) {
+      throw new DomainError('LOAN_TERMS_REQUIRED', `O empréstimo ${row.id} está gravado sem valor emprestado ou taxa de juros válidos.`);
+    }
+    return loan;
+  }
 
   private mapPlan(row: Database['financing_plans']): FinancingPlan {
     return {
@@ -119,6 +161,7 @@ export class KyselyFinancingRepository implements FinancingRepository {
       paymentResourceId: row.payment_resource_id,
       responsiblePersonId: row.responsible_person_id,
       createdByPersonId: row.created_by_person_id,
+      loan: this.mapLoan(row),
       status: row.status as FinancingPlan['status'],
       createdAt: new Date(row.created_at),
     };
