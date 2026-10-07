@@ -206,6 +206,14 @@ log; não abre nem lê o arquivo.
 
 ## Backup / exportação
 
+**Backup automático (ADR D-035).** O Fluxo copia o banco pela API de backup do SQLite,
+confere a cópia e guarda as 14 mais novas como `fluxo-backup-AAAAMMDD-HHMMSS.db`. A cópia
+acontece ao fechar o app (se houve gravação) e uma vez por dia enquanto ele fica aberto.
+Em **Configurações → Backup automático** dá para ver a última cópia, escolher a pasta e
+copiar na hora. Sem escolha, a pasta é `backups` dentro do diretório de dados, no mesmo
+disco: escolha uma pasta fora do computador. Falha de backup aparece em diálogo e fica
+visível em Configurações. Para restaurar, siga `docs/process/restauracao-backup.md`.
+
 Menu **Configurações → Exportar dados** gera um arquivo CSV e/ou JSON com todas as
 movimentações confirmadas e canceladas, recursos e categorias — suficiente para reconstruir
 o histórico financeiro fora do Fluxo. Nada é enviado para a nuvem automaticamente.

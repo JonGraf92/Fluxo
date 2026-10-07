@@ -7,12 +7,23 @@ import {
   LEGACY_DATA_DIR_NAME,
   resolveDataDir,
 } from '../../src/infrastructure/dataDir';
+import { BackupError } from '../../src/infrastructure/backup/backup';
+import { BackupManager } from '../../src/infrastructure/backup/BackupManager';
 import { closeDatabase, openDatabase } from '../../src/infrastructure/db/connection';
 import { runMigrations } from '../../src/infrastructure/db/migrate';
 import { createRepositoryContext } from '../../src/infrastructure/repositories/createRepositoryContext';
 import { SqliteUnitOfWork } from '../../src/infrastructure/unit-of-work/SqliteUnitOfWork';
+import { registerBackupHandlers } from './ipc/handlers/backup.handlers';
 import { registerIpcHandlers } from './ipc/register';
 import { createMainWindow } from './window';
+
+/** Com o app aberto, a cada hora confere se a cópia mais nova passou de 24 horas. */
+const BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+function describeBackupError(error: unknown): string {
+  if (error instanceof BackupError) return `${error.message}\n\nCódigo: ${error.code}`;
+  return error instanceof Error ? error.message : String(error);
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -80,9 +91,48 @@ async function bootstrap(dataDir: string): Promise<void> {
   const repos = createRepositoryContext(fluxoDb.kysely);
   const uow = new SqliteUnitOfWork(fluxoDb.kysely);
 
+  const appData = app.getPath('appData');
+  const backup = new BackupManager({
+    db: fluxoDb.raw,
+    dataDir,
+    // O backup nunca grava na pasta de dados da versão antiga (ADR D-034). Um destino que
+    // só se chama "Fluxo" em outro lugar (ex.: pasta no Google Drive) é permitido.
+    validateDestination: (destinationDir) => {
+      try {
+        assertNotLegacyDataDir(realPathOfExistingPrefix(destinationDir), appData, path);
+      } catch (error) {
+        if (!(error instanceof DataDirError)) throw error;
+        if (error.code === 'DATA_DIR_LEGACY_NAME') return;
+        throw new BackupError(
+          'BACKUP_DESTINATION_INVALID',
+          'A pasta de backup não pode ser a pasta de dados da versão antiga do Fluxo nem ficar dentro dela.',
+        );
+      }
+    },
+  });
+
   registerIpcHandlers({ repos, uow });
+  registerBackupHandlers({ repos, uow }, backup);
 
   openMainWindow();
+
+  // Falha de backup nunca é silenciosa (ADR D-035): aparece em diálogo e fica registrada
+  // no estado exibido em Configurações.
+  const reportBackupFailure = (error: unknown): void => {
+    // eslint-disable-next-line no-console
+    console.error('Backup automático falhou:', error);
+    void dialog.showMessageBox({
+      type: 'error',
+      title: 'Backup do Fluxo falhou',
+      message: 'A cópia de segurança automática não foi feita.',
+      detail: `${describeBackupError(error)}\n\nConfira a pasta de backup em Configurações.`,
+    });
+  };
+  const runScheduledBackup = (): void => {
+    backup.runIfDue().catch(reportBackupFailure);
+  };
+  runScheduledBackup();
+  const backupTimer = setInterval(runScheduledBackup, BACKUP_CHECK_INTERVAL_MS);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -90,11 +140,28 @@ async function bootstrap(dataDir: string): Promise<void> {
     }
   });
 
+  let closing = false;
   app.on('window-all-closed', () => {
-    closeDatabase(fluxoDb);
-    if (process.platform !== 'darwin') {
-      app.quit();
-    }
+    if (closing) return;
+    closing = true;
+    clearInterval(backupTimer);
+    // O backup roda ANTES de fechar o banco: a API de backup precisa da conexão aberta.
+    backup
+      .runOnClose()
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Backup ao fechar falhou:', error);
+        dialog.showErrorBox(
+          'Backup do Fluxo falhou',
+          `A cópia de segurança ao fechar não foi feita.\n\n${describeBackupError(error)}\n\nSeus dados continuam salvos neste computador. Abra o Fluxo e confira a pasta de backup em Configurações.`,
+        );
+      })
+      .finally(() => {
+        closeDatabase(fluxoDb);
+        if (process.platform !== 'darwin') {
+          app.quit();
+        }
+      });
   });
 }
 

@@ -38,6 +38,9 @@ export const CHANNELS = {
   dashboardGetSummary: 'dashboard:getSummary',
   exportChooseDestination: 'export:chooseDestination',
   exportRun: 'export:run',
+  backupGetStatus: 'backup:getStatus',
+  backupChooseDestination: 'backup:chooseDestination',
+  backupRunNow: 'backup:runNow',
 } as const;
 
 // ---------- Zod schemas de entrada (validados no handler do main, seção 36) ----------
@@ -273,6 +276,17 @@ export interface ResourceDto {
 export interface MemberDto {
   id: string;
   displayName: string;
+}
+
+/** Estado do backup automático (ADR D-035). O destino é sempre escolhido no processo main. */
+export interface BackupStatusDto {
+  destinationDir: string;
+  isDefaultDestination: boolean;
+  lastBackupAt: string | null;
+  lastBackupFile: string | null;
+  backupCount: number;
+  retention: number;
+  lastError: { code: string; message: string; at: string } | null;
 }
 
 export interface OpenCreditInvoiceDto {
