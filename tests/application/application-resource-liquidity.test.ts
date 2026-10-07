@@ -51,7 +51,9 @@ describe('Aplicações — prazo de liquidez e movimentações específicas', ()
 
     // E a auditoria do UPDATE nao deve mais carregar initialBalanceCents — o campo nao e
     // mutavel, entao nao faz sentido registra-lo como se tivesse mudado.
-    const audit = db.raw.prepare("SELECT before_json, after_json FROM audit_logs WHERE entity_type = 'Resource' AND entity_id = ? ORDER BY occurred_at DESC LIMIT 1").get(resource.id) as { before_json: string; after_json: string };
+    // `rowid` desempata: criacao e edicao podem cair no mesmo milissegundo, e sem ele o
+    // SQLite pode devolver qualquer um dos dois registros como "o mais recente".
+    const audit = db.raw.prepare("SELECT before_json, after_json FROM audit_logs WHERE entity_type = 'Resource' AND entity_id = ? ORDER BY occurred_at DESC, rowid DESC LIMIT 1").get(resource.id) as { before_json: string; after_json: string };
     expect(JSON.parse(audit.before_json).initialBalanceCents).toBeUndefined();
     expect(JSON.parse(audit.after_json).initialBalanceCents).toBeUndefined();
 
