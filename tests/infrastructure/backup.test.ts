@@ -13,7 +13,7 @@ import {
   verifyBackupFile,
 } from '../../src/infrastructure/backup/backup';
 import { BACKUP_SETTINGS_FILE, BackupManager, DEFAULT_BACKUP_DIR_NAME } from '../../src/infrastructure/backup/BackupManager';
-import { createFileDb, makeTempDir, removeTempDir } from '../fileDb';
+import { createFileDb, FILE_DB_TEST_TIMEOUT_MS, makeTempDir, removeTempDir } from '../fileDb';
 import { seedPersonAndNucleus, seedResource } from '../seed';
 import { TestDb } from '../testDb';
 
@@ -34,7 +34,9 @@ async function expectBackupError(promise: Promise<unknown>, code: BackupErrorCod
   expect((caught as BackupError).code).toBe(code);
 }
 
-describe('Backup automático — ADR D-035', () => {
+// Estes testes gravam bancos de verdade em disco (fsync, verificação de integridade). O
+// limite padrão de 5 s serve para banco em memória; em disco lento de CI ele é curto.
+describe('Backup automático — ADR D-035', { timeout: FILE_DB_TEST_TIMEOUT_MS }, () => {
   let dataDir: string;
   let destinationDir: string;
   let db: TestDb;
@@ -99,16 +101,25 @@ describe('Backup automático — ADR D-035', () => {
       const unrelated = path.join(destinationDir, 'anotacoes.txt');
       fs.writeFileSync(unrelated, 'não é backup');
 
+      // As cópias antigas são arquivos de marcação com nome de backup: a limpeza decide pelo
+      // nome. Fazer todas as cópias de verdade (17 gravações com fsync e verificação) deixava
+      // este teste perto do limite de tempo no disco lento do CI.
       const extra = 3;
-      const created: string[] = [];
-      for (let index = 0; index < BACKUP_RETENTION + extra; index += 1) {
-        const result = await createBackup({ source: db.raw, destinationDir, now: minutesLater(index) });
-        created.push(result.filePath);
+      const older: string[] = [];
+      for (let index = 0; index < BACKUP_RETENTION + extra - 1; index += 1) {
+        const filePath = path.join(destinationDir, backupFileName(minutesLater(index)));
+        fs.writeFileSync(filePath, 'marcação');
+        older.push(filePath);
       }
 
+      const newest = await createBackup({ source: db.raw, destinationDir, now: minutesLater(older.length) });
+
+      // A limpeza roda depois da cópia nova: saem as `extra` mais antigas, fica a recém-criada.
+      expect(newest.removed).toEqual(older.slice(0, extra));
       const kept = listBackups(destinationDir).map((backup) => backup.filePath);
       expect(kept).toHaveLength(BACKUP_RETENTION);
-      expect(kept).toEqual(created.slice(extra));
+      expect(kept).toEqual([...older.slice(extra), newest.filePath]);
+      expect(() => verifyBackupFile(newest.filePath)).not.toThrow();
       expect(fs.existsSync(unrelated)).toBe(true);
     });
 

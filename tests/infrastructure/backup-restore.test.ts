@@ -7,7 +7,7 @@ import { CreateIncome } from '../../src/application/use-cases/movement/CreateInc
 import { AddNucleusMember } from '../../src/application/use-cases/person/AddNucleusMember';
 import { createBackup, verifyBackupFile } from '../../src/infrastructure/backup/backup';
 import { scanIntegrity } from '../../src/infrastructure/db/integrityScan';
-import { createFileDb, makeTempDir, removeTempDir } from '../fileDb';
+import { createFileDb, FILE_DB_TEST_TIMEOUT_MS, makeTempDir, removeTempDir } from '../fileDb';
 import { seedPersonAndNucleus, seedResource } from '../seed';
 import { TestDb } from '../testDb';
 
@@ -16,7 +16,7 @@ import { TestDb } from '../testDb';
  * conferir a cópia, colocá-la como `fluxo.db` numa pasta de dados vazia e abrir — e
  * confere que os dados voltam iguais. Tudo em pastas temporárias, com dados fabricados.
  */
-describe('Restauração de backup — docs/process/restauracao-backup.md', () => {
+describe('Restauração de backup — docs/process/restauracao-backup.md', { timeout: FILE_DB_TEST_TIMEOUT_MS }, () => {
   const period = { periodDateFrom: '2026-11-01', periodDateTo: '2026-11-30' };
   let originalDir: string;
   let backupDir: string;

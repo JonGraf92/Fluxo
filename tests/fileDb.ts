@@ -7,6 +7,12 @@ import { createRepositoryContext } from '../src/infrastructure/repositories/crea
 import { SqliteUnitOfWork } from '../src/infrastructure/unit-of-work/SqliteUnitOfWork';
 import { TestDb } from './testDb';
 
+/**
+ * Limite de tempo para testes que gravam banco em arquivo. O padrão do Vitest (5 s) foi
+ * pensado para banco em memória; gravação com fsync em disco de CI pode passar disso.
+ */
+export const FILE_DB_TEST_TIMEOUT_MS = 30_000;
+
 /** Pasta temporária descartável; nunca a pasta de dados de verdade. */
 export function makeTempDir(label: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `fluxo-test-${label}-`));
