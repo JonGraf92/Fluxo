@@ -2,150 +2,86 @@
 
 **Seu dinheiro. Em movimento.**
 
-Fluxo é uma aplicação pessoal de controle financeiro, local-first e privada por padrão.
-Os dados financeiros vivem no seu dispositivo. Nada é enviado para servidores externos.
+Fluxo é um aplicativo de desktop para controle financeiro pessoal e familiar. Ele é
+**local-first**: os dados ficam em um banco SQLite no próprio computador, e o aplicativo
+funciona sem internet e sem conta em nenhum serviço.
 
-## Status desta entrega
+## Estado do projeto
 
-> **Revisão de veracidade (2026-10).** Este bloco foi corrigido: o README afirmava que o
-> código "nunca foi compilado nem executado" e citava uma versão (V1.0.1) diferente do
-> `package.json` (1.0.0). O projeto **está** versionado, compila, tem CI verde e a suíte
-> roda.
-
-Estado real, com evidência de execução:
-
-| Verificação | Resultado |
+| | |
 |---|---|
-| `npm run typecheck` | passa |
-| `npm test` | **108 testes, 33 arquivos** |
-| `npm run build` | passa (Vite + Electron) |
-| CI (GitHub Actions, `windows-latest`) | verde |
+| Versão | 1.0.0 |
+| Fase | Pré-validação. O período de uso real de 30 dias começa em 05/11/2026 (ver `docs/product/plano-validacao-30-dias.md`) |
+| Plataforma | Windows. É a única em que o aplicativo é testado e onde o CI roda |
+| Integração contínua | GitHub Actions: lint, verificação de tipos, testes e build a cada push e pull request |
+| Uso | Projeto pessoal, sem distribuição pública |
 
-Repositório: `JonGraf92/Fluxo`. Node 24.21.0 e npm 11.16.0 (ver `.nvmrc` e `package.json`).
+## O que o Fluxo faz
 
-**Correção de infraestrutura:** `npm test` usava `electron --run-as-node`, flag que **não
-existe** no Electron (o correto é a variável `ELECTRON_RUN_AS_NODE=1`). O comando nunca
-havia funcionado, e o `ci.yml` — que o executa — sempre falharia. Os números acima são,
-portanto, os **primeiros** resultados reais de teste do projeto.
+- **Recursos:** contas, dinheiro físico, aplicações (com prazo de liquidez), benefícios
+  (VR/VA) e cartões de crédito, cada um com saldo inicial gravado uma única vez.
+- **Movimentações:** entradas, saídas, transferências entre recursos e ajustes de saldo
+  auditados. Um lançamento confirmado não é apagado; ele pode ser cancelado, com motivo,
+  e continua no histórico.
+- **Cartão de crédito:** compras entram na fatura correta pelo dia de fechamento; a fatura é
+  consolidada e paga a partir de uma conta, com trava contra pagamento em dobro.
+- **Financiamentos e empréstimos:** cronograma de parcelas previstas, com baixa de cada
+  parcela mediante confirmação. Empréstimos guardam valor emprestado e taxa de juros, e a
+  tela mostra o total a pagar e o custo.
+- **Painel:** saldos separados por natureza (dinheiro disponível, aplicações, benefícios e
+  faturas a pagar), entradas e saídas do mês e movimentações recentes.
+- **Pessoas:** mais de uma pessoa no mesmo núcleo financeiro, com o responsável de cada
+  lançamento registrado separadamente de quem o digitou.
+- **Categorias:** lista padrão de entrada e de saída, com criação de categorias próprias.
+- **Backup automático:** cópia conferida do banco ao fechar o aplicativo e uma por dia
+  enquanto ele fica aberto, com as 14 mais recentes guardadas na pasta escolhida.
+- **Exportação:** CSV e JSON com recursos, categorias e todas as movimentações, inclusive
+  as canceladas.
+- **Tema** claro e escuro.
 
-### Hardening aplicado (ADRs D-024 a D-033)
+## O que ainda não faz
 
-As cinco correções originais (D-024 a D-028) estão implementadas e testadas. Uma auditoria
-independente encontrou depois mais seis defeitos, todos corrigidos com teste de regressão:
+- Parcelamento de compras no cartão de crédito. Hoje cada parcela é lançada no seu mês.
+- Total de gastos por categoria nas telas. Disponível apenas pela exportação.
+- Período personalizado no painel. Os totais seguem o mês de calendário.
+- Saldo devedor de financiamentos e empréstimos no painel.
+- Integração bancária (Open Finance), leitura de notas e documentos, sincronização entre
+  dispositivos, acesso por celular e login por pessoa.
 
-1. **Saldo inicial era editável pelo renderer**, violando o ADR D-020 — reescrita de saldo
-   sem gerar movimento e **sem aparecer na exportação** (D-029).
-2. **Baixa parcial de parcela quitava a dívida inteira** — R$ 0,01 quitava R$ 5.000 (D-031).
-3. **TOCTOU no pagamento de fatura** — dois toques debitavam o caixa duas vezes (D-031).
-4. **`DeleteFinancingPlan` fazia delete físico** e apagava histórico de parcelas pagas (D-031).
-5. **Saldo devedor da fatura era calculado por texto** (`description.startsWith(...)`) —
-   renomear ou traduzir a mensagem faria o app cobrar de novo uma fatura já paga (D-032).
-6. **O invariante contábil falhava aberto** — natureza de recurso desconhecida pulava a
-   verificação, e um `EXPENSE` positivo em recurso inexistente passava. A mesma falha
-   existia na autorização de núcleo (D-030).
+O que vem depois está em `docs/product/roadmap.md` e na seção 9 do plano de validação.
 
-Somam-se correções de fronteira do Electron: `shell.openExternal` sem validar esquema,
-`will-navigate` aceitando qualquer `file://` e exportação gravando em caminho escolhido pelo
-renderer (D-033).
+## Privacidade e proteção dos dados
 
-> **Achado relevante sobre a suíte:** três testes **sancionavam os defeitos** — afirmavam que
-> o comportamento errado era o correto. Corrigir o código sem corrigir esses testes criaria
-> um conflito falso, e a "correção" acabaria revertida.
+- Nenhum dado financeiro sai do computador. Não há chamadas de rede para autenticação,
+  sincronização, telemetria ou IA (ADR D-001).
+- A interface não acessa o banco de dados. Ela conversa com o processo principal por uma
+  API mínima, e todo canal valida a entrada antes de executar (ADR D-024, D-025, D-033).
+- A pasta de dados da versão 1.0 é separada da pasta usada por versões anteriores, e o
+  aplicativo se recusa a abrir a pasta antiga (ADR D-034).
+- Os arquivos de backup e de exportação **não são cifrados**. Trate as pastas onde eles
+  ficam como dado sensível.
 
-Para rodar localmente:
+## Requisitos
 
-```bash
-npm ci
-npm run typecheck
-npm test
-```
+- Windows 10 ou superior
+- Node.js 24 (a versão de referência está em `.nvmrc`; o intervalo aceito, em `package.json`)
+- npm 11.16.0
 
-Para abrir o app, veja "Como executar (desenvolvimento)": sempre com `FLUXO_DATA_DIR`
-apontando para uma pasta descartável.
-
-## Princípios
-
-1. Correção financeira acima de tudo.
-2. Segurança.
-3. Integridade dos dados.
-4. Privacidade.
-5. Usabilidade.
-6. Manutenibilidade.
-7. Performance.
-8. Estética.
-
-Regras que o domínio nunca quebra (ver `docs/adr/` para o histórico completo):
-
-- Documento ≠ Movimento.
-- OCR/IA ≠ autoridade financeira (não implementado na V1).
-- Dinheiro ≠ benefício — nunca somados em um único total.
-- Transferência ≠ despesa.
-- Compra de cartão ≠ saída imediata (fora do escopo da V1, arquitetura não bloqueia).
-- Saldo é sempre derivado de movimentos confirmados, nunca um número editável.
-- Histórico confirmado não é apagado — apenas cancelado/estornado, com auditoria.
-- Acesso ≠ propriedade. Identidade ≠ pessoa financeira.
-- Operações que tocam mais de um recurso são atômicas (tudo ou nada).
-- Dados financeiros permanecem locais na V1.
-
-## Stack
-
-- TypeScript (strict) em toda a base
-- Electron (desktop, local-first)
-- React + Vite (renderer)
-- SQLite via `better-sqlite3` (persistência local, síncrona)
-- Kysely (query builder tipado, SQL explícito e auditável — sem engine própria como Prisma)
-- Zod (validação nas fronteiras: IPC e casos de uso)
-- Vitest (testes)
-
-Ver `docs/adr/` para a justificativa de cada escolha.
-
-## Arquitetura
-
-```
-Renderer (React)
-      │
-      ▼
-preload (contextBridge — API mínima, sem Node exposto)
-      │
-      ▼
-Main process
-  ├── IPC handlers   (valida entrada com Zod)
-  ├── Application    (casos de uso)
-  ├── Domain         (regras financeiras — sem I/O)
-  └── Infrastructure (SQLite/Kysely, filesystem, exportação)
-```
-
-Nenhuma regra financeira (cálculo de saldo, transferência ≠ despesa, dinheiro ≠ benefício)
-vive na UI ou nos handlers de IPC. Vive só no domínio (`src/domain`), testável sem banco
-e sem Electron.
-
-Detalhes completos em `docs/architecture/overview.md`.
-
-## Como instalar
-
-Pré-requisitos: Node.js 24.21.0 e npm 11.16.0. As versões ficam registradas em
-`.nvmrc` e em `package.json`; o `.npmrc` rejeita instalações com versões diferentes.
+## Instalação
 
 ```bash
 npm ci
 ```
 
-### Nota sobre módulo nativo (better-sqlite3)
+`better-sqlite3` é um módulo nativo. Os testes rodam no mesmo runtime do Electron usado pelo
+aplicativo, então não é preciso recompilar para alternar entre testar e executar. Se o
+módulo falhar ao carregar, use `npm run rebuild:electron`.
 
-`better-sqlite3` é um módulo nativo. O comando padrão `npm test` roda no runtime do Electron
-fixado pelo projeto, portanto usa a mesma ABI da aplicação e não exige recompilações para
-alternar entre testes e uso do app. Use `npm ci` para instalar exatamente as dependências
-registradas no `package-lock.json`.
+## Execução em desenvolvimento
 
-O Electron está fixado em 44.4.5, junto com `better-sqlite3` 13.0.3 e as ferramentas de
-rebuild/empacotamento. Essa linha de Electron é suportada atualmente; atualize-a regularmente
-para continuar recebendo correções de segurança.
-
-## Como executar (desenvolvimento)
-
-O app roda as migrations sozinho ao abrir. Em desenvolvimento, aponte **sempre** a variável
-`FLUXO_DATA_DIR` para uma pasta descartável. A pasta `.fluxo-dev-data/`, na raiz do projeto,
-está no `.gitignore` para isso.
+O aplicativo aplica as migrations do banco sozinho ao abrir. Em desenvolvimento, aponte
+**sempre** a variável `FLUXO_DATA_DIR` para uma pasta descartável. A pasta
+`.fluxo-dev-data/`, na raiz do projeto, está no `.gitignore` para isso.
 
 PowerShell:
 
@@ -160,80 +96,128 @@ bash:
 FLUXO_DATA_DIR="$PWD/.fluxo-dev-data" npm run dev
 ```
 
-Isso sobe o Vite (renderer) e o Electron (main) juntos. Na primeira execução, o Fluxo cria
-o banco SQLite nessa pasta e roda as migrations. Para recomeçar do zero, feche o app e
-apague a pasta.
+`FLUXO_DATA_DIR` precisa ser um caminho absoluto. Se estiver vazia, for relativa ou apontar
+para a pasta de dados de uma versão anterior, o aplicativo mostra um erro e não abre. Para
+recomeçar do zero, feche o aplicativo e apague a pasta.
 
-`FLUXO_DATA_DIR` precisa ser um caminho absoluto. Definida e vazia, relativa, ou apontando
-para a pasta de dados da versão antiga, o app mostra um erro e não abre (ver ADR D-034).
-
-## Como testar
+## Testes e qualidade
 
 ```bash
+npm run lint
+npm run typecheck
 npm test
+npm run build
 ```
 
-Cobre domínio (regras financeiras puras), application (casos de uso com banco em memória)
-e testes de segurança básicos (validação de entrada, parametrização de queries).
+Os testes cobrem as regras do domínio, os casos de uso, a fronteira com a interface, as
+migrations, o backup e a restauração. Todos usam banco em memória ou pastas temporárias,
+com dados fabricados; nenhum teste abre o aplicativo nem toca em dados reais.
 
-O workflow `.github/workflows/ci.yml` repete a instalação limpa, lint, verificação de tipos,
-testes e build em Windows usando as mesmas versões do projeto.
+Os quatro comandos acima são os mesmos que o CI executa
+(`.github/workflows/ci.yml`).
 
-## Como gerar build instalável
+## Build instalável
 
 ```bash
 npm run dist
 ```
 
-Gera o instalável em `release/` via `electron-builder` (dmg/nsis/AppImage conforme o SO).
+Gera o instalador em `release/` com o `electron-builder`. O instalador usa a mesma
+identidade de versões anteriores do Fluxo: instalar a versão nova substitui o programa
+antigo, mas não toca nos dados dele.
 
 ## Onde os dados ficam
 
-Banco SQLite local, em:
+| Sistema | Caminho |
+|---|---|
+| Windows | `%APPDATA%\fluxo-v2\fluxo.db` |
+| macOS | `~/Library/Application Support/fluxo-v2/fluxo.db` |
+| Linux | `~/.config/fluxo-v2/fluxo.db` |
 
-- macOS: `~/Library/Application Support/fluxo-v2/fluxo.db`
-- Windows: `%APPDATA%\fluxo-v2\fluxo.db`
-- Linux: `~/.config/fluxo-v2/fluxo.db`
+O caminho é resolvido por `src/infrastructure/dataDir.ts` e fixado antes de qualquer banco
+ser aberto. A pasta de versões anteriores (`%APPDATA%\fluxo`) nunca é usada: se houver um
+banco antigo ali, o aplicativo apenas registra um aviso e não o abre.
 
-O caminho é resolvido por `resolveDataDir` (`src/infrastructure/dataDir.ts`) e fixado no
-processo principal antes de qualquer banco ser aberto (ADR D-034). A variável de ambiente
-`FLUXO_DATA_DIR` troca o local por outro caminho absoluto.
+## Backup e restauração
 
-A pasta da versão antiga (`%APPDATA%\fluxo`, que no Windows é a mesma que `%APPDATA%\Fluxo`)
-**nunca** é usada: o app recusa abrir se o diretório resolvido for essa pasta, estiver dentro
-dela ou se chamar "fluxo". Se houver um `fluxo.db` antigo ali, o app só registra um aviso no
-log; não abre nem lê o arquivo.
+- As cópias são feitas pela API de backup do SQLite e conferidas antes de valer. Elas têm o
+  nome `fluxo-backup-AAAAMMDD-HHMMSS.db`.
+- A pasta de destino é escolhida em **Configurações → Backup automático**. Sem escolha, as
+  cópias ficam em `backups`, dentro da pasta de dados, no mesmo disco: escolha uma pasta
+  fora do computador, como a de um serviço de armazenamento sincronizado ou um disco externo.
+- Falha de backup aparece em um aviso na tela e fica visível em Configurações.
+- Não mantenha o `fluxo.db` em uso dentro de uma pasta sincronizada. Use a pasta
+  sincronizada apenas como destino das cópias.
+- O passo a passo de restauração, com um ensaio que não toca nos dados reais, está em
+  `docs/process/restauracao-backup.md`.
 
-## Backup / exportação
+## Arquitetura
 
-**Backup automático (ADR D-035).** O Fluxo copia o banco pela API de backup do SQLite,
-confere a cópia e guarda as 14 mais novas como `fluxo-backup-AAAAMMDD-HHMMSS.db`. A cópia
-acontece ao fechar o app (se houve gravação) e uma vez por dia enquanto ele fica aberto.
-Em **Configurações → Backup automático** dá para ver a última cópia, escolher a pasta e
-copiar na hora. Sem escolha, a pasta é `backups` dentro do diretório de dados, no mesmo
-disco: escolha uma pasta fora do computador. Falha de backup aparece em diálogo e fica
-visível em Configurações. Para restaurar, siga `docs/process/restauracao-backup.md`.
+```
+Interface (React)
+      │
+      ▼
+preload (contextBridge: API mínima, sem Node exposto)
+      │
+      ▼
+Processo principal (Electron)
+  ├── Canais IPC      valida a entrada com Zod, deriva a identidade, autoriza por núcleo
+  ├── Aplicação       casos de uso transacionais
+  ├── Domínio         regras financeiras, sem I/O
+  └── Infraestrutura  SQLite/Kysely, migrations, backup, exportação
+```
 
-Menu **Configurações → Exportar dados** gera um arquivo CSV e/ou JSON com todas as
-movimentações confirmadas e canceladas, recursos e categorias — suficiente para reconstruir
-o histórico financeiro fora do Fluxo. Nada é enviado para a nuvem automaticamente.
+| Pasta | Conteúdo |
+|---|---|
+| `src/domain/` | Entidades, `Money`, ciclo de fatura, cálculo de saldo e invariantes |
+| `src/application/` | Casos de uso e portas |
+| `src/infrastructure/` | Banco, migrations, repositórios, backup e exportação |
+| `src/shared/` | Contrato IPC e parsers de valor |
+| `electron/` | Processo principal, canais IPC e preload |
+| `renderer/` | Interface React |
+| `tests/` | Espelha a estrutura acima |
 
-## Limitações conhecidas da V1.0
+**Stack:** TypeScript (strict), Electron, React com Vite, SQLite via `better-sqlite3`,
+Kysely, Zod e Vitest. A justificativa de cada escolha está em `docs/adr/`.
 
-- Sem integração bancária / Open Finance.
-- Sem cartão de crédito (fatura/parcelamento) — arquitetura preparada, não implementado.
-- Sem OCR / captura de documentos — schema não existe ainda nesta versão (ver ADR D-022).
-- Sem sincronização em nuvem.
-- Sem compartilhamento familiar/multiusuário na interface (o domínio já modela `Membership`
-  e papéis, mas a V1 só usa `OWNER`).
-- Sem IA financeira / previsões.
+## Regras que o domínio não quebra
 
-Ver `docs/product/roadmap.md` para o que vem depois.
+- Dinheiro é sempre inteiro em centavos, nunca ponto flutuante.
+- Saldo é derivado das movimentações confirmadas; não é um número editável.
+- O saldo inicial de um recurso é gravado uma vez. Correções posteriores são ajustes auditados.
+- Histórico confirmado não é apagado, apenas cancelado ou estornado.
+- Dinheiro e benefício nunca são somados em um mesmo saldo.
+- Transferência não é despesa, e pagamento de fatura não conta a compra duas vezes.
+- Operações que tocam mais de um recurso são atômicas.
+- Validações de segurança e de contabilidade falham fechado: sem o dado necessário, a
+  operação é recusada.
+- O esquema do banco só muda por migration nova.
 
 ## Documentação
 
-- `docs/architecture/overview.md` — arquitetura e modelo de dados detalhado
-- `docs/adr/` — decisões arquiteturais (ADRs), numeradas
-- `docs/security/checklist.md` — checklist de segurança do Electron e da aplicação
-- `docs/product/roadmap.md` — o que fica para V1.1+
-- `docs/qa/definition-of-done.md` — critérios de aceite da V1.0 e cenários financeiros validados
+| Documento | Conteúdo |
+|---|---|
+| `docs/adr/` | Decisões de arquitetura, numeradas (D-001 a D-036) |
+| `docs/architecture/overview.md` | Arquitetura e modelo de dados |
+| `docs/security/checklist.md` | Checklist de segurança do Electron e da aplicação |
+| `docs/product/plano-validacao-30-dias.md` | Plano do período de uso real e critérios de aceite |
+| `docs/product/roadmap.md` | O que fica para depois |
+| `docs/process/etapa-a.md` | Tarefas de preparação para o período de validação |
+| `docs/process/etapa-a-verificacoes.md` | Lacunas conhecidas, com referência ao código |
+| `docs/process/restauracao-backup.md` | Procedimento de restauração de backup |
+| `docs/qa/definition-of-done.md` | Critérios de aceite e cenários financeiros validados |
+| `CLAUDE.md` | Regras de trabalho no repositório |
+
+## Como contribuir
+
+- Uma tarefa por branch e por pull request, sem push direto na `main`.
+- Toda decisão que muda comportamento ganha um ADR em `docs/adr/`.
+- Correção de defeito vem com teste de regressão.
+- Lint, verificação de tipos, testes e build precisam passar antes da revisão.
+
+As regras completas estão em `CLAUDE.md`.
+
+## Licença
+
+Projeto de uso pessoal, sem licença de uso ou distribuição (`UNLICENSED`). Todos os
+direitos reservados.
