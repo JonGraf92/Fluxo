@@ -1,4 +1,5 @@
-appId: com.fluxo.app
+# Identidade própria da v2 (ADR D-041): instala ao lado do Fluxo antigo, sem substituí-lo.
+appId: com.fluxo.app.v2
 productName: Fluxo
 directories:
   output: release
@@ -9,6 +10,8 @@ files:
   - package.json
 extraMetadata:
   main: dist-electron/electron/main/index.js
+  # Nome do pacote empacotado: define a pasta de instalação (Programs\fluxo-v2).
+  name: fluxo-v2
 mac:
   category: public.app-category.finance
   target: [dmg]

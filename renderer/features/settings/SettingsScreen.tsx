@@ -204,8 +204,8 @@ export function SettingsScreen({ session, theme, onThemeChange }: { session: App
       >
         <h3 style={{ fontSize: 16, marginBottom: 6 }}>Sobre esta versão</h3>
         <p style={{ marginTop: 0, marginBottom: 0, color: 'var(--color-ink-muted)' }}>
-          Fluxo V1.0 — local-first, sem integração bancária, sem OCR, sem nuvem. Ver o README do projeto para a lista
-          completa de limitações conhecidas e o roadmap.
+          Fluxo 1.1 — seus dados ficam só neste computador: sem integração bancária, sem leitura de nota fiscal e sem
+          nuvem. A lista do que o aplicativo ainda não faz está no README do projeto.
         </p>
       </div>
     </div>

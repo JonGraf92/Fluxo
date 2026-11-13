@@ -10,8 +10,8 @@ funciona sem internet e sem conta em nenhum serviço.
 
 | | |
 |---|---|
-| Versão | 1.0.0 |
-| Fase | Pré-validação. O período de uso real de 30 dias começa em 05/11/2026 (ver `docs/product/plano-validacao-30-dias.md`) |
+| Versão | 1.1.0 |
+| Fase | Pronto para o uso real no computador. O período de validação de 30 dias está descrito em `docs/product/plano-validacao-30-dias.md` |
 | Plataforma | Windows. É a única em que o aplicativo é testado e onde o CI roda |
 | Integração contínua | GitHub Actions: lint, verificação de tipos, testes e build a cada push e pull request |
 | Uso | Projeto pessoal, sem distribuição pública |
@@ -23,13 +23,18 @@ funciona sem internet e sem conta em nenhum serviço.
 - **Movimentações:** entradas, saídas, transferências entre recursos e ajustes de saldo
   auditados. Um lançamento confirmado não é apagado; ele pode ser cancelado, com motivo,
   e continua no histórico.
-- **Cartão de crédito:** compras entram na fatura correta pelo dia de fechamento; a fatura é
-  consolidada e paga a partir de uma conta, com trava contra pagamento em dobro.
+- **Cartão de crédito:** compras entram na fatura correta pelo dia de fechamento, à vista
+  ou em até 48 parcelas (uma compra por mês, cada uma na sua fatura). O painel lista as
+  faturas e paga cada uma em um passo, com trava contra pagamento em dobro; se o banco
+  cobrou mais que o lançado, a diferença entra como juros e encargos ou compra esquecida.
+- **Combustível:** preço por litro e hodômetro opcionais no lançamento, com os litros
+  calculados. A estrutura já guarda posto, CNPJ e impostos para a futura leitura de nota.
 - **Financiamentos e empréstimos:** cronograma de parcelas previstas, com baixa de cada
   parcela mediante confirmação. Empréstimos guardam valor emprestado e taxa de juros, e a
   tela mostra o total a pagar e o custo.
-- **Painel:** saldos separados por natureza (dinheiro disponível, aplicações, benefícios e
-  faturas a pagar), entradas e saídas do mês e movimentações recentes.
+- **Painel:** saldos separados por natureza (dinheiro disponível, aplicações, benefícios,
+  cartões e financiamentos a pagar), resultado de qualquer período com benefício à parte,
+  gastos por categoria e movimentações recentes.
 - **Pessoas:** mais de uma pessoa no mesmo núcleo financeiro, com o responsável de cada
   lançamento registrado separadamente de quem o digitou.
 - **Categorias:** lista padrão de entrada e de saída, com criação de categorias próprias.
@@ -41,12 +46,12 @@ funciona sem internet e sem conta em nenhum serviço.
 
 ## O que ainda não faz
 
-- Parcelamento de compras no cartão de crédito. Hoje cada parcela é lançada no seu mês.
-- Total de gastos por categoria nas telas. Disponível apenas pela exportação.
-- Período personalizado no painel. Os totais seguem o mês de calendário.
-- Saldo devedor de financiamentos e empréstimos no painel.
-- Integração bancária (Open Finance), leitura de notas e documentos, sincronização entre
-  dispositivos, acesso por celular e login por pessoa.
+- Leitura de nota fiscal (QR Code da NFC-e ou foto). Só a estrutura de dados existe.
+- Parcelado com juros, pagamento parcial de fatura e antecipação automática de parcelas.
+- Consumo médio de combustível, orçamento por categoria e gráficos.
+- Renomear ou remover categorias e pessoas pela tela.
+- Integração bancária (Open Finance), sincronização entre dispositivos, acesso por celular
+  e login por pessoa.
 
 O que vem depois está em `docs/product/roadmap.md` e na seção 9 do plano de validação.
 
@@ -122,9 +127,10 @@ Os quatro comandos acima são os mesmos que o CI executa
 npm run dist
 ```
 
-Gera o instalador em `release/` com o `electron-builder`. O instalador usa a mesma
-identidade de versões anteriores do Fluxo: instalar a versão nova substitui o programa
-antigo, mas não toca nos dados dele.
+Gera o instalador em `release/` com o `electron-builder`. A versão 1.1 tem identidade
+própria (`com.fluxo.app.v2`, pasta `fluxo-v2`): instala **ao lado** do Fluxo antigo, sem
+substituí-lo nem tocar nos dados dele (ADR D-041). Os atalhos "Fluxo" passam a abrir a
+versão nova.
 
 ## Onde os dados ficam
 
@@ -197,7 +203,7 @@ Kysely, Zod e Vitest. A justificativa de cada escolha está em `docs/adr/`.
 
 | Documento | Conteúdo |
 |---|---|
-| `docs/adr/` | Decisões de arquitetura, numeradas (D-001 a D-036) |
+| `docs/adr/` | Decisões de arquitetura, numeradas (D-001 a D-041) |
 | `docs/architecture/overview.md` | Arquitetura e modelo de dados |
 | `docs/security/checklist.md` | Checklist de segurança do Electron e da aplicação |
 | `docs/product/plano-validacao-30-dias.md` | Plano do período de uso real e critérios de aceite |
