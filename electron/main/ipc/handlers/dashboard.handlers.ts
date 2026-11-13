@@ -1,6 +1,6 @@
 import { GetDashboardSummary } from '../../../../src/application/use-cases/balance/GetDashboardSummary';
 import { CHANNELS, DashboardSummaryDto, GetDashboardSummarySchema } from '../../../../src/shared/ipc-contract';
-import { toResourceDto } from '../dto';
+import { toMovementDto, toResourceDto } from '../dto';
 import { IpcContext, handleAuthenticated } from '../register';
 
 export function registerDashboardHandlers(ctx: IpcContext): void {
@@ -21,21 +21,11 @@ export function registerDashboardHandlers(ctx: IpcContext): void {
         creditOutstandingCents: summary.creditOutstandingCents,
         periodIncomeCents: summary.periodIncomeCents,
         periodExpenseCents: summary.periodExpenseCents,
-        recentMovements: summary.recentMovements.map((entry) => ({
-          id: entry.movement.id,
-          nucleusId: entry.movement.nucleusId,
-          type: entry.movement.type,
-          status: entry.movement.status,
-          date: entry.movement.date,
-          description: entry.movement.description,
-          categoryId: entry.movement.categoryId,
-          responsiblePersonId: entry.movement.responsiblePersonId,
-          paymentMethod: entry.movement.paymentMethod,
-          invoiceDueDate: entry.movement.invoiceDueDate,
-          cancelledAt: entry.movement.cancelledAt ? entry.movement.cancelledAt.toISOString() : null,
-          cancelledReason: entry.movement.cancelledReason,
-          legs: entry.legs.map((leg) => ({ id: leg.id, resourceId: leg.resourceId, amountCents: leg.amountCents })),
-        })),
+        periodBenefitIncomeCents: summary.periodBenefitIncomeCents,
+        periodBenefitExpenseCents: summary.periodBenefitExpenseCents,
+        expenseByCategory: summary.expenseByCategory,
+        financingOutstandingCents: summary.financingOutstandingCents,
+        recentMovements: summary.recentMovements.map(toMovementDto),
       };
     },
   );

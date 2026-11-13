@@ -381,8 +381,13 @@ export interface DashboardSummaryDto {
   applicationTotalCents: number;
   benefitTotalCents: number;
   creditOutstandingCents: number;
+  /** Dinheiro e cartão, sem benefício (ADR D-037). */
   periodIncomeCents: number;
   periodExpenseCents: number;
+  periodBenefitIncomeCents: number;
+  periodBenefitExpenseCents: number;
+  expenseByCategory: { categoryId: string | null; amountCents: number; benefitAmountCents: number }[];
+  financingOutstandingCents: number;
   recentMovements: MovementDto[];
 }
 
