@@ -1,5 +1,7 @@
 import React from 'react';
-import type { DashboardSummaryDto } from '../../../src/shared/ipc-contract';
+import type { DashboardSummaryDto, OpenCreditInvoiceDto } from '../../../src/shared/ipc-contract';
+import { Button } from '../../design-system/Button';
+import { PayInvoiceModal } from '../movements/PayInvoiceModal';
 import { EmptyState } from '../../design-system/EmptyState';
 import { Input } from '../../design-system/Input';
 import { api } from '../../services/api';
@@ -41,6 +43,9 @@ function SummaryCard({ label, valueCents, accent }: { label: string; valueCents:
     </div>
   );
 }
+
+/** Faturas mostradas no painel; as demais (meses à frente) entram só na soma. */
+const INVOICES_SHOWN = 6;
 
 /** Resultado do período em dinheiro e cartão, com benefício à parte (ADR D-023, D-037). */
 function PeriodSection({ summary, categoryName, hasBenefit, children }: { summary: DashboardSummaryDto; categoryName: (id: string | null) => string; hasBenefit: boolean; children: React.ReactNode }) {
@@ -98,6 +103,8 @@ export function Dashboard({ session, refreshToken, onChanged }: DashboardProps) 
   const [localRefresh, setLocalRefresh] = React.useState(0);
   const [periodFrom, setPeriodFrom] = React.useState(firstDayOfMonthIso());
   const [periodTo, setPeriodTo] = React.useState(todayIsoDate());
+  const [invoices, setInvoices] = React.useState<OpenCreditInvoiceDto[]>([]);
+  const [payTarget, setPayTarget] = React.useState<OpenCreditInvoiceDto | null>(null);
 
   const loadSummary = React.useCallback(async () => {
     // Campo de data vazio ou período invertido: mantém o último resumo em vez de falhar.
@@ -109,6 +116,7 @@ export function Dashboard({ session, refreshToken, onChanged }: DashboardProps) 
       recentMovementsLimit: 8,
     });
     setSummary(result);
+    setInvoices((await api().creditInvoices.listOpen(session.nucleusId)).filter((invoice) => invoice.status !== 'PAID'));
   }, [session.nucleusId, periodFrom, periodTo]);
 
   React.useEffect(() => {
@@ -158,6 +166,31 @@ export function Dashboard({ session, refreshToken, onChanged }: DashboardProps) 
             )}
           </div>
 
+          {invoices.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 15, marginBottom: 10 }}>Faturas do cartão</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {invoices.slice(0, INVOICES_SHOWN).map((invoice) => (
+                  <div key={invoice.cardResourceId + invoice.dueDate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)' }}>
+                    <span>
+                      {invoice.cardName} · vence {invoice.dueDate.split('-').reverse().join('/')}
+                      {invoice.status === 'CLOSED' ? ' · consolidada' : ''}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span className="tabular">{formatCentsToBRL(invoice.amountCents)}</span>
+                      <Button variant="secondary" onClick={() => setPayTarget(invoice)}>Pagar fatura</Button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {invoices.length > INVOICES_SHOWN && (
+                <p className="field-hint" style={{ marginTop: 8 }}>
+                  Mais {invoices.length - INVOICES_SHOWN} faturas futuras, somando {formatCentsToBRL(invoices.slice(INVOICES_SHOWN).reduce((sum, invoice) => sum + invoice.amountCents, 0))}. Todas aparecem em Recursos, no cartão.
+                </p>
+              )}
+            </div>
+          )}
+
           <PeriodSection summary={summary} categoryName={categoryName} hasBenefit={hasBenefitInPeriod}>
             <Input label="De" type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
             <Input label="Até" type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
@@ -195,6 +228,7 @@ export function Dashboard({ session, refreshToken, onChanged }: DashboardProps) 
           </div>
         </>
       )}
+      {payTarget && <PayInvoiceModal session={session} resources={resources} invoice={payTarget} onClose={() => setPayTarget(null)} onPaid={handleChanged} />}
     </div>
   );
 }

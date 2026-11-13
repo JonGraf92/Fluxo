@@ -15,6 +15,7 @@ export const CHANNELS = {
   memberList: 'member:list',
   creditInvoicesList: 'creditInvoices:list',
   creditInvoicePay: 'creditInvoices:pay',
+  creditInvoiceSettle: 'creditInvoices:settle',
   financingCreate: 'financing:create',
   financingList: 'financing:list',
   financingPayInstallment: 'financing:payInstallment',
@@ -111,6 +112,18 @@ export const PayCreditInvoiceSchema = z.object({
   clientOperationId: z.string().uuid(),
 }).strict();
 export type PayCreditInvoicePayload = z.infer<typeof PayCreditInvoiceSchema>;
+/** Pagar a fatura em um passo: consolida e paga na mesma transação (ADR D-040). */
+export const SettleCreditInvoiceSchema = z.object({
+  nucleusId: z.string().uuid(),
+  cardResourceId: z.string().uuid(),
+  invoiceDueDate: IsoDateSchema,
+  paymentResourceId: z.string().uuid(),
+  date: IsoDateSchema,
+  paidAmountCents: z.number().int().positive(),
+  differenceKind: z.enum(['CHARGES', 'UNRECORDED_PURCHASE']).optional(),
+  clientOperationId: z.string().uuid(),
+}).strict();
+export type SettleCreditInvoicePayload = z.infer<typeof SettleCreditInvoiceSchema>;
 
 export const FinancingAssetTypeSchema = z.enum(['HOUSE', 'APARTMENT', 'LAND', 'PROPERTY_CONSORTIUM', 'CAR', 'MOTORCYCLE', 'TRUCK', 'JET_SKI', 'VEHICLE_CONSORTIUM', 'LOAN']);
 /**
@@ -325,6 +338,7 @@ export interface OpenCreditInvoiceDto {
   amountCents: number;
   status: 'OPEN' | 'CLOSED' | 'PAID';
   paidAt: string | null;
+  suggestedPaymentResourceId: string | null;
 }
 
 export interface FinancingInstallmentDto {

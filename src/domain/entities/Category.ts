@@ -1,7 +1,7 @@
 import { CategoryKind } from '../value-objects/enums';
 
 /** Categorias que o código reconhece pela CHAVE, nunca pelo nome (ADR D-032, D-038). */
-export type SystemCategoryKey = 'FUEL';
+export type SystemCategoryKey = 'FUEL' | 'CARD_CHARGES';
 
 export interface Category {
   readonly id: string;
@@ -30,10 +30,14 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   'Contas',
   'Financiamentos',
   'Empréstimos',
+  'Juros e encargos',
   'Outros',
 ] as const;
 
-const SYSTEM_KEY_BY_DEFAULT_NAME: Readonly<Record<string, SystemCategoryKey>> = { Combustível: 'FUEL' };
+const SYSTEM_KEY_BY_DEFAULT_NAME: Readonly<Record<string, SystemCategoryKey>> = {
+  Combustível: 'FUEL',
+  'Juros e encargos': 'CARD_CHARGES',
+};
 
 /** Lista padrão de um núcleo novo, já com as chaves de sistema. */
 export function buildDefaultCategories(nucleusId: string, createdAt: Date, newId: () => string): Category[] {

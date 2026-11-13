@@ -7,6 +7,8 @@ export interface OpenCreditInvoice {
   amountCents: number;
   status: 'OPEN' | 'CLOSED' | 'PAID';
   paidAt: string | null;
+  /** Conta usada no último pagamento de fatura deste cartão: sugestão para o próximo. */
+  suggestedPaymentResourceId: string | null;
 }
 
 export class ListOpenCreditInvoices {
@@ -22,6 +24,10 @@ export class ListOpenCreditInvoices {
     const legs = await this.repos.movements.listLegsByMovementIds(movements.map((movement) => movement.id));
     const movementsById = new Map(movements.map((movement) => [movement.id, movement]));
     const invoiceStates = new Map(invoiceRecords.map((invoice) => [invoice.cardResourceId + ':' + invoice.dueDate, invoice]));
+    const lastPaymentByCard = new Map<string, string | null>();
+    for (const record of invoiceRecords.filter((item) => item.status === 'PAID').sort((a, b) => (a.paidAt ?? '').localeCompare(b.paidAt ?? ''))) {
+      lastPaymentByCard.set(record.cardResourceId, record.paymentResourceId);
+    }
     for (const leg of legs) {
       const movement = movementsById.get(leg.movementId);
       if (!movement || movement.type !== 'EXPENSE' || movement.paymentMethod !== 'CREDIT' || !movement.invoiceDueDate) continue;
@@ -29,7 +35,7 @@ export class ListOpenCreditInvoices {
       if (!card) continue;
       const key = card.id + ':' + movement.invoiceDueDate;
       const state = invoiceStates.get(key);
-      const invoice = invoices.get(key) ?? { cardResourceId: card.id, cardName: card.name, dueDate: movement.invoiceDueDate, amountCents: 0, status: state?.status ?? 'OPEN', paidAt: state?.paidAt ?? null };
+      const invoice = invoices.get(key) ?? { cardResourceId: card.id, cardName: card.name, dueDate: movement.invoiceDueDate, amountCents: 0, status: state?.status ?? 'OPEN', paidAt: state?.paidAt ?? null, suggestedPaymentResourceId: lastPaymentByCard.get(card.id) ?? null };
       invoice.amountCents += leg.amountCents;
       invoices.set(key, invoice);
     }

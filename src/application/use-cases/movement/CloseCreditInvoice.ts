@@ -1,11 +1,23 @@
 import { DomainError, NotFoundError } from '../../../domain/errors/DomainError';
+import { RepositoryContext } from '../../ports/RepositoryContext';
 import { UnitOfWork } from '../../ports/UnitOfWork';
 import { newId } from './shared';
 
 export class CloseCreditInvoice {
   constructor(private readonly uow: UnitOfWork) {}
-  async execute(input: { nucleusId: string; cardResourceId: string; invoiceDueDate: string }): Promise<{ closed: boolean }> {
-    return this.uow.run(async (repos) => {
+  async execute(input: CloseCreditInvoiceInput): Promise<{ closed: boolean }> {
+    return this.uow.run((repos) => closeCreditInvoiceInRepositories(repos, input));
+  }
+}
+
+export interface CloseCreditInvoiceInput {
+  nucleusId: string;
+  cardResourceId: string;
+  invoiceDueDate: string;
+}
+
+/** Reúso transacional pelo pagamento em um passo (ADR D-040). */
+export async function closeCreditInvoiceInRepositories(repos: RepositoryContext, input: CloseCreditInvoiceInput): Promise<{ closed: boolean }> {
       const card = await repos.resources.findById(input.cardResourceId);
       if (!card || card.nucleusId !== input.nucleusId) throw new NotFoundError('Cartão', input.cardResourceId);
       if (card.type !== 'CREDIT_CARD') throw new DomainError('RESOURCE_NOT_CREDIT_CARD', 'O recurso selecionado não é um cartão de crédito.');
@@ -21,6 +33,4 @@ export class CloseCreditInvoice {
       if (current) await repos.creditInvoices.update(record);
       else await repos.creditInvoices.create(record);
       return { closed: true };
-    });
-  }
 }

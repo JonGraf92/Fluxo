@@ -68,6 +68,7 @@ const api = {
     listOpen: (nucleusId: string) => invoke<OpenCreditInvoiceDto[]>(CHANNELS.creditInvoicesList, { nucleusId }),
     close: (payload: CloseCreditInvoicePayload) => invoke<{ closed: boolean }>(CHANNELS.creditInvoiceClose, payload),
     pay: (payload: import('../../src/shared/ipc-contract').PayCreditInvoicePayload) => invoke<{ movementId: string; wasAlreadyCreated: boolean; amountCents: number }>(CHANNELS.creditInvoicePay, payload),
+    settle: (payload: import('../../src/shared/ipc-contract').SettleCreditInvoicePayload) => invoke<{ movementId: string; wasAlreadyCreated: boolean; amountCents: number }>(CHANNELS.creditInvoiceSettle, payload),
   },
   financings: {
     create: (payload: CreateFinancingPayload) => invoke<{ planId: string }>(CHANNELS.financingCreate, payload),
