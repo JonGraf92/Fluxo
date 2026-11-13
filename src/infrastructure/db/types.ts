@@ -104,6 +104,10 @@ export interface MovementsTable {
   invoice_due_date: string | null;
   /** Cartao cuja fatura este movimento quitou. Nulo quando nao e pagamento de fatura. */
   card_invoice_resource_id: string | null;
+  /** Compra parcelada no cartão (ADR D-039); nulas em movimento que não é parcela. */
+  installment_group_id: string | null;
+  installment_number: number | null;
+  installment_count: number | null;
 }
 
 export interface MovementLegsTable {

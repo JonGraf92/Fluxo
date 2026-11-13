@@ -120,6 +120,10 @@ export function mapMovement(row: MovementsTable): Movement {
     paymentMethod: (row.payment_method as import('../../domain/value-objects/enums').PaymentMethod | null) ?? null,
     invoiceDueDate: row.invoice_due_date ?? null,
     cardInvoiceResourceId: row.card_invoice_resource_id ?? null,
+    installment:
+      row.installment_group_id !== null && row.installment_number !== null && row.installment_count !== null
+        ? { groupId: row.installment_group_id, number: row.installment_number, count: row.installment_count }
+        : null,
     clientOperationId: row.client_operation_id,
     createdAt: fromIso(row.created_at),
     updatedAt: fromIso(row.updated_at),

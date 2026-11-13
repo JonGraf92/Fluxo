@@ -5,7 +5,9 @@ import { Money } from '../../../domain/value-objects/Money';
 import { PaymentMethod } from '../../../domain/value-objects/enums';
 import { UnitOfWork } from '../../ports/UnitOfWork';
 import { RepositoryContext } from '../../ports/RepositoryContext';
-import { buildAuditLog, buildLegs, buildMovement } from './shared';
+import { buildAuditLog, buildLegs, buildMovement, newId } from './shared';
+import { financingDueDate } from '../../../domain/entities/Financing';
+import { MAX_CARD_INSTALLMENTS, splitInstallments } from '../../../domain/services/CardInstallments';
 import { firstEligibleInvoiceDueDate, nextInvoiceDueDate } from '../../../domain/services/CreditInvoiceCycle';
 
 export interface CreateExpenseInput {
@@ -21,7 +23,20 @@ export interface CreateExpenseInput {
   invoiceDueDate?: string | null;
   /** Só na categoria Combustível (ADR D-038). Digitação manual: o resto vem de nota fiscal. */
   fuel?: { fuelType?: FuelType | null; pricePerLiterMillis?: number | null; odometerKm?: number | null } | null;
+  /** Número de parcelas no cartão de crédito (ADR D-039). Ausente ou 1 = à vista. */
+  installments?: number;
   clientOperationId: string;
+}
+
+/** Primeira fatura ainda aberta a partir de dueDate: compra não entra em fatura já consolidada. */
+async function firstOpenInvoiceDueDate(repos: RepositoryContext, cardId: string, dueDate: string): Promise<string> {
+  let candidate = dueDate;
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const invoice = await repos.creditInvoices.findByCardAndDueDate(cardId, candidate);
+    if (!invoice || invoice.status === 'OPEN') return candidate;
+    candidate = nextInvoiceDueDate(candidate);
+  }
+  throw new DomainError('NO_OPEN_INVOICE_CYCLE', 'Não foi possível encontrar uma fatura aberta para esta compra.');
 }
 
 export interface CreateExpenseResult {
@@ -98,58 +113,76 @@ export async function createExpenseInRepositories(repos: RepositoryContext, inpu
         throw new DomainError('INVOICE_DATE_REQUIRED', 'Escolha a data de vencimento da fatura desta compra.');
       }
 
+
+      const count = input.installments ?? 1;
+      if (!Number.isInteger(count) || count < 1 || count > MAX_CARD_INSTALLMENTS) {
+        throw new DomainError('INSTALLMENTS_INVALID', `Informe de 1 a ${MAX_CARD_INSTALLMENTS} parcelas.`);
+      }
+      if (count > 1 && paymentMethod !== 'CREDIT') {
+        throw new DomainError('INSTALLMENTS_ONLY_ON_CREDIT', 'Só compras no cartão de crédito podem ser parceladas.');
+      }
+      if (count > input.amountCents) {
+        throw new DomainError('INSTALLMENTS_INVALID', 'O valor é pequeno demais para esse número de parcelas.');
+      }
+
       let invoiceDueDate = input.invoiceDueDate ?? null;
       if (paymentMethod === 'CREDIT') {
         if (resource.statementDueDay == null || resource.statementClosingDay == null) throw new DomainError('RESOURCE_CARD_CYCLE_MISSING', 'Configure o fechamento e o vencimento do cartão antes de lançar compras.');
         const firstDueDate = firstEligibleInvoiceDueDate(input.date, resource.statementClosingDay, resource.statementDueDay);
         if (invoiceDueDate! < firstDueDate) throw new DomainError('INVOICE_BEFORE_CUTOFF', `Esta compra deve entrar na fatura com vencimento em ${firstDueDate} ou depois, conforme o corte do cartão.`);
-        // If the current cycle was consolidated early, carry the purchase to the next open cycle.
-        let openCycleFound = false;
-        for (let attempt = 0; attempt < 24; attempt += 1) {
-          const invoice = await repos.creditInvoices.findByCardAndDueDate(resource.id, invoiceDueDate!);
-          if (!invoice || invoice.status === 'OPEN') { openCycleFound = true; break; }
-          invoiceDueDate = nextInvoiceDueDate(invoiceDueDate!);
-        }
-        if (!openCycleFound) throw new DomainError('NO_OPEN_INVOICE_CYCLE', 'Não foi possível encontrar uma fatura aberta para esta compra.');
+        // Se o ciclo já foi consolidado, a compra vai para o próximo ciclo aberto.
+        invoiceDueDate = await firstOpenInvoiceDueDate(repos, resource.id, invoiceDueDate!);
       }
 
-      const amount = Money.fromCents(input.amountCents);
-      const legPlan = paymentMethod === 'CREDIT'
-        ? { resourceId: input.resourceId, amountCents: amount.toCents() }
-        : planExpenseLeg(input.resourceId, amount);
+      // À vista é uma parcela só. Parcelado: N compras confirmadas, cada uma com a data do seu
+      // mês e a fatura do seu ciclo; os centavos da divisão ficam na primeira (ADR D-039).
+      const groupId = count > 1 ? newId() : null;
+      const amounts = splitInstallments(Money.fromCents(input.amountCents).toCents(), count);
+      let firstMovementId = '';
+      for (const [index, amountCents] of amounts.entries()) {
+        const number = index + 1;
+        if (number > 1) invoiceDueDate = await firstOpenInvoiceDueDate(repos, resource.id, nextInvoiceDueDate(invoiceDueDate!));
+        const amount = Money.fromCents(amountCents);
+        const legPlan = paymentMethod === 'CREDIT'
+          ? { resourceId: input.resourceId, amountCents: amount.toCents() }
+          : planExpenseLeg(input.resourceId, amount);
 
-      const movement = buildMovement({
-        nucleusId: input.nucleusId,
-        type: 'EXPENSE',
-        status: 'CONFIRMED',
-        date: input.date,
-        description,
-        categoryId: input.categoryId,
-        createdByPersonId: input.createdByPersonId,
-        responsiblePersonId,
-        paymentMethod,
-        invoiceDueDate,
-        clientOperationId: input.clientOperationId,
-      });
-      const legs = buildLegs(movement.id, [legPlan]);
-
-      await repos.movements.createWithLegs(movement, legs);
-      if (hasFuel) {
-        await repos.fuelDetails.save({
-          movementId: movement.id, ...fuelInput, quantityMl: null, stationName: null, stationCnpj: null,
-          stationAddress: null, taxTotalCents: null, taxes: [], provenance: 'MANUAL', accessKey: null,
-        });
-      }
-      await repos.auditLogs.record(
-        buildAuditLog({
-          entityType: 'Movement',
-          entityId: movement.id,
-          action: 'CREATE_EXPENSE',
-          actorPersonId: input.createdByPersonId,
+        const movement = buildMovement({
           nucleusId: input.nucleusId,
-          after: { type: 'EXPENSE', resourceId: input.resourceId, amountCents: input.amountCents },
-        }),
-      );
+          type: 'EXPENSE',
+          status: 'CONFIRMED',
+          date: financingDueDate(input.date, number),
+          description: groupId ? `${description} (${number}/${count})` : description,
+          categoryId: input.categoryId,
+          createdByPersonId: input.createdByPersonId,
+          responsiblePersonId,
+          paymentMethod,
+          invoiceDueDate,
+          installment: groupId ? { groupId, number, count } : null,
+          // A primeira parcela carrega o id da operação: reenvio encontra a compra já gravada.
+          clientOperationId: number === 1 ? input.clientOperationId : `${input.clientOperationId}:${number}`,
+        });
+        await repos.movements.createWithLegs(movement, buildLegs(movement.id, [legPlan]));
+        if (number === 1) {
+          firstMovementId = movement.id;
+          if (hasFuel) {
+            await repos.fuelDetails.save({
+              movementId: movement.id, ...fuelInput, quantityMl: null, stationName: null, stationCnpj: null,
+              stationAddress: null, taxTotalCents: null, taxes: [], provenance: 'MANUAL', accessKey: null,
+            });
+          }
+        }
+        await repos.auditLogs.record(
+          buildAuditLog({
+            entityType: 'Movement',
+            entityId: movement.id,
+            action: 'CREATE_EXPENSE',
+            actorPersonId: input.createdByPersonId,
+            nucleusId: input.nucleusId,
+            after: { type: 'EXPENSE', resourceId: input.resourceId, amountCents, installment: movement.installment },
+          }),
+        );
+      }
 
-      return { movementId: movement.id, wasAlreadyCreated: false };
+      return { movementId: firstMovementId, wasAlreadyCreated: false };
 }

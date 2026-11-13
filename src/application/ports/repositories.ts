@@ -86,6 +86,8 @@ export interface MovementRepository {
   findByClientOperationId(nucleusId: string, clientOperationId: string): Promise<Movement | null>;
   findById(id: string): Promise<Movement | null>;
   list(filter: MovementFilter): Promise<Movement[]>;
+  /** Todas as parcelas de uma compra parcelada no cartão, em ordem. */
+  listByInstallmentGroup(groupId: string): Promise<Movement[]>;
   listLegsByMovementIds(movementIds: string[]): Promise<MovementLeg[]>;
   listLegsByNucleus(nucleusId: string): Promise<MovementLeg[]>;
   /** Recorte direto para BalanceCalculator: leg + status do movimento, sem mapear entidade completa. */

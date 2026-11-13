@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 import { AuditLog } from '../../../domain/entities/AuditLog';
 import { Movement } from '../../../domain/entities/Movement';
 import { MovementLeg } from '../../../domain/entities/MovementLeg';
+import { InstallmentRef } from '../../../domain/services/CardInstallments';
 import { MovementStatus, MovementType, PaymentMethod } from '../../../domain/value-objects/enums';
 
 export function newId(): string {
@@ -21,6 +22,7 @@ export interface BuildMovementInput {
   invoiceDueDate?: string | null;
   /** Preenchido apenas em pagamento de fatura; e a identificacao estrutural do cartao. */
   cardInvoiceResourceId?: string | null;
+  installment?: InstallmentRef | null;
   clientOperationId: string;
 }
 
@@ -43,6 +45,7 @@ export function buildMovement(input: BuildMovementInput): Movement {
     paymentMethod: input.paymentMethod ?? null,
     invoiceDueDate: input.invoiceDueDate ?? null,
     cardInvoiceResourceId: input.cardInvoiceResourceId ?? null,
+    installment: input.installment ?? null,
     clientOperationId: input.clientOperationId,
     createdAt: now,
     updatedAt: now,

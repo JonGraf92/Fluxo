@@ -7,6 +7,8 @@ export interface CancelMovementInput {
   movementId: string;
   reason: string;
   actorPersonId: string;
+  /** Compra parcelada no cartão: cancela também as demais parcelas ainda confirmadas (ADR D-039). */
+  wholeInstallmentPurchase?: boolean;
 }
 
 /**
@@ -42,19 +44,23 @@ export class CancelMovement {
         assertValidTransition(movement.status, 'CANCELLED'); // lança DomainError explicativo
       }
 
-      await repos.movements.updateStatus(movement.id, 'CANCELLED', new Date(), input.reason);
-
-      await repos.auditLogs.record(
-        buildAuditLog({
-          entityType: 'Movement',
-          entityId: movement.id,
-          action: 'CANCEL',
-          actorPersonId: input.actorPersonId,
-          nucleusId: movement.nucleusId,
-          before: { status: movement.status },
-          after: { status: 'CANCELLED', reason: input.reason },
-        }),
-      );
+      const siblings = input.wholeInstallmentPurchase && movement.installment
+        ? (await repos.movements.listByInstallmentGroup(movement.installment.groupId)).filter((item) => item.id !== movement.id && isCancellable(item.status))
+        : [];
+      for (const target of [movement, ...siblings]) {
+        await repos.movements.updateStatus(target.id, 'CANCELLED', new Date(), input.reason);
+        await repos.auditLogs.record(
+          buildAuditLog({
+            entityType: 'Movement',
+            entityId: target.id,
+            action: 'CANCEL',
+            actorPersonId: input.actorPersonId,
+            nucleusId: target.nucleusId,
+            before: { status: target.status },
+            after: { status: 'CANCELLED', reason: input.reason },
+          }),
+        );
+      }
     });
   }
 }

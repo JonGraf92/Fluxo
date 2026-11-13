@@ -4,6 +4,8 @@ import { Movement } from '../../domain/entities/Movement';
 import { MovementLeg } from '../../domain/entities/MovementLeg';
 import { MovementFilter, MovementRepository } from '../../application/ports/repositories';
 import { LegForBalance } from '../../domain/services/BalanceCalculator';
+import { DomainError } from '../../domain/errors/DomainError';
+import { isValidInstallmentRef } from '../../domain/services/CardInstallments';
 import { assertLedgerInvariants } from '../../domain/services/LedgerInvariants';
 import { MovementStatus, ResourceType, natureOf } from '../../domain/value-objects/enums';
 import { Database } from '../db/types';
@@ -42,6 +44,11 @@ export class KyselyMovementRepository implements MovementRepository {
       resourceNatures,
     });
 
+    // Parcela só existe em compra no cartão, com posição coerente (ADR D-039).
+    if (movement.installment && (movement.type !== 'EXPENSE' || movement.paymentMethod !== 'CREDIT' || !isValidInstallmentRef(movement.installment))) {
+      throw new DomainError('INSTALLMENT_INVALID', 'Parcela inválida: só compras no cartão de crédito podem ser parceladas.');
+    }
+
     await this.db
       .insertInto('movements')
       .values({
@@ -57,6 +64,9 @@ export class KyselyMovementRepository implements MovementRepository {
         payment_method: movement.paymentMethod,
         invoice_due_date: movement.invoiceDueDate,
         card_invoice_resource_id: movement.cardInvoiceResourceId,
+        installment_group_id: movement.installment?.groupId ?? null,
+        installment_number: movement.installment?.number ?? null,
+        installment_count: movement.installment?.count ?? null,
         client_operation_id: movement.clientOperationId,
         created_at: toIso(movement.createdAt),
         updated_at: toIso(movement.updatedAt),
@@ -96,6 +106,11 @@ export class KyselyMovementRepository implements MovementRepository {
   async findById(id: string): Promise<Movement | null> {
     const row = await this.db.selectFrom('movements').selectAll().where('id', '=', id).executeTakeFirst();
     return row ? mapMovement(row) : null;
+  }
+
+  async listByInstallmentGroup(groupId: string): Promise<Movement[]> {
+    const rows = await this.db.selectFrom('movements').selectAll().where('installment_group_id', '=', groupId).orderBy('installment_number').execute();
+    return rows.map(mapMovement);
   }
 
   async list(filter: MovementFilter): Promise<Movement[]> {

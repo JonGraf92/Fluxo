@@ -1,3 +1,4 @@
+import { InstallmentRef } from '../services/CardInstallments';
 import { MovementStatus, MovementType, PaymentMethod } from '../value-objects/enums';
 
 /**
@@ -25,6 +26,8 @@ export interface Movement {
    * Nulo em todo movimento que nao seja pagamento de fatura.
    */
   readonly cardInvoiceResourceId: string | null;
+  /** Posição desta compra numa compra parcelada no cartão (ADR D-039); null se não é parcela. */
+  readonly installment: InstallmentRef | null;
   readonly clientOperationId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;

@@ -36,6 +36,7 @@ export function MovementsScreen({ session, refreshToken, onChanged }: MovementsS
   const [localRefresh, setLocalRefresh] = React.useState(0);
   const [toCancel, setToCancel] = React.useState<MovementDto | null>(null);
   const [cancelReason, setCancelReason] = React.useState('');
+  const [cancelWholePurchase, setCancelWholePurchase] = React.useState(true);
 
   const loadMovements = React.useCallback(async () => {
     const result = await api().movements.list({
@@ -61,7 +62,7 @@ export function MovementsScreen({ session, refreshToken, onChanged }: MovementsS
   async function confirmCancel() {
     if (!toCancel || !cancelReason.trim()) return;
     try {
-      await api().movements.cancel({ movementId: toCancel.id, reason: cancelReason.trim() });
+      await api().movements.cancel({ movementId: toCancel.id, reason: cancelReason.trim(), wholeInstallmentPurchase: toCancel.installment !== null && cancelWholePurchase });
       show('Movimentação cancelada.');
       setToCancel(null);
       setCancelReason('');
@@ -128,6 +129,12 @@ export function MovementsScreen({ session, refreshToken, onChanged }: MovementsS
               “{toCancel.description}” permanece no histórico, marcado como cancelado — ele só deixa de entrar no
               saldo. Informe o motivo.
             </p>
+            {toCancel.installment && (
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="checkbox" checked={cancelWholePurchase} onChange={(event) => setCancelWholePurchase(event.target.checked)} />
+                Cancelar todas as {toCancel.installment.count} parcelas desta compra
+              </label>
+            )}
             <Input label="Motivo do cancelamento" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} autoFocus />
           </div>
         </Modal>

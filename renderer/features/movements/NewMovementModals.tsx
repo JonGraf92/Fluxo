@@ -10,6 +10,7 @@ import { api, newOperationId } from '../../services/api';
 import { formatCentsToBRL, todayIsoDate } from '../../services/money';
 import { firstEligibleInvoiceDueDate } from '../../../src/domain/services/CreditInvoiceCycle';
 import { fuelQuantityMl } from '../../../src/domain/entities/FuelDetails';
+import { MAX_CARD_INSTALLMENTS, splitInstallments } from '../../../src/domain/services/CardInstallments';
 import { parseLiterPriceToMillis } from '../../../src/shared/liter-price-parsing';
 import { FUEL_TYPE_LABELS, formatLiters } from './fuelFormat';
 
@@ -146,6 +147,10 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
   const [fuelType, setFuelType] = React.useState('');
   const [literPriceText, setLiterPriceText] = React.useState('');
   const [odometerText, setOdometerText] = React.useState('');
+  const [installmentsText, setInstallmentsText] = React.useState('1');
+  const installments = paymentMethod === 'CREDIT' ? Number(installmentsText || '1') : 1;
+  const installmentsValid = Number.isInteger(installments) && installments >= 1 && installments <= MAX_CARD_INSTALLMENTS;
+  const installmentAmounts = installmentsValid && installments > 1 && amountCents && amountCents >= installments ? splitInstallments(amountCents, installments) : null;
 
   const expenseCategories = categories.filter((c) => c.kind === 'EXPENSE');
   // Combustível é reconhecido pela chave da categoria, não pelo nome (ADR D-038).
@@ -183,6 +188,7 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
     if (!description.trim()) return setError('Descreva a saída.');
     if (!resourceId) return setError(paymentMethod === 'CREDIT' ? 'Cadastre e escolha o cartão de crédito.' : paymentMethod === 'BENEFIT' ? 'Cadastre e escolha um benefício VR/VA.' : 'Escolha a conta de onde sairá o pagamento.');
     if (paymentMethod === 'CREDIT' && !invoiceDueDate) return setError('Escolha a fatura desta compra.');
+    if (!installmentsValid) return setError(`Informe de 1 a ${MAX_CARD_INSTALLMENTS} parcelas.`);
     const odometerKm = odometerText.trim() ? Number(odometerText) : null;
     if (isFuel && literPriceText.trim() && literPriceMillis === null) return setError('Informe o preço por litro no formato 5,799.');
     if (isFuel && odometerKm !== null && (!Number.isInteger(odometerKm) || odometerKm < 0)) return setError('Informe o hodômetro em quilômetros inteiros.');
@@ -200,9 +206,10 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
         paymentMethod,
         invoiceDueDate: paymentMethod === 'CREDIT' ? invoiceDueDate : null,
         ...(isFuel ? { fuel: { fuelType: (fuelType || null) as 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'CNG' | null, pricePerLiterMillis: literPriceMillis, odometerKm } } : {}),
+        ...(installments > 1 ? { installments } : {}),
         clientOperationId: newOperationId(),
       });
-      show('Saída registrada.');
+      show(installments > 1 ? `Compra registrada em ${installments} parcelas, uma em cada fatura.` : 'Saída registrada.');
       onCreated();
       onClose();
     } catch (err) {
@@ -281,6 +288,22 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
             value={invoiceDueDate}
             onChange={(event) => setInvoiceDueDate(event.target.value)}
             hint="Escolha manualmente a fatura. O app sugere o dia 10 do próximo mês."
+          />
+        )}
+        {paymentMethod === 'CREDIT' && (
+          <Input
+            label="Parcelas"
+            type="number"
+            min={1}
+            max={MAX_CARD_INSTALLMENTS}
+            step={1}
+            value={installmentsText}
+            onChange={(event) => setInstallmentsText(event.target.value)}
+            hint={
+              installmentAmounts
+                ? `1ª de ${formatCentsToBRL(installmentAmounts[0] ?? 0)}${installments > 1 ? ` e ${installments - 1} de ${formatCentsToBRL(installmentAmounts[1] ?? 0)}` : ''}. A 1ª entra na fatura acima; as demais, nas faturas seguintes.`
+                : 'Use 1 para compra à vista.'
+            }
           />
         )}
         {paymentMethod === 'CREDIT' && <p className="field-hint">O dia de fechamento do cartão define o corte. Compras feitas depois do corte são previstas para a fatura seguinte; compras não podem ser lançadas em faturas já consolidadas.</p>}

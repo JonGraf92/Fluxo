@@ -61,6 +61,7 @@ export function registerMovementHandlers(ctx: IpcContext): void {
     await new CancelMovement(ctx.uow).execute({
       movementId: payload.movementId,
       reason: payload.reason,
+      wholeInstallmentPurchase: payload.wholeInstallmentPurchase,
       actorPersonId: auth.personId,
     });
     return { cancelled: true };

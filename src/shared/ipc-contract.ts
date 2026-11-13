@@ -206,6 +206,8 @@ export const CreateExpenseSchema = z.object({
   paymentMethod: PaymentMethodSchema.optional(),
   invoiceDueDate: IsoDateSchema.nullable().optional(),
   fuel: FuelInputSchema.nullable().optional(),
+  /** Parcelas no cartão de crédito (ADR D-039); ausente ou 1 = à vista. */
+  installments: z.number().int().min(1).max(48).optional(),
 }).strict();
 export type CreateExpensePayload = z.infer<typeof CreateExpenseSchema>;
 
@@ -243,6 +245,7 @@ export const CancelMovementSchema = z
   .object({
     movementId: z.string().uuid(),
     reason: z.string().min(1).max(300),
+    wholeInstallmentPurchase: z.boolean().optional(),
   })
   .strict();
 export type CancelMovementPayload = z.infer<typeof CancelMovementSchema>;
@@ -397,6 +400,8 @@ export interface MovementDto {
   cancelledReason: string | null;
   legs: MovementLegDto[];
   fuel: FuelDetailsDto | null;
+  /** Posição numa compra parcelada no cartão; null se não é parcela. */
+  installment: { number: number; count: number } | null;
 }
 
 export interface DashboardResourceDto {

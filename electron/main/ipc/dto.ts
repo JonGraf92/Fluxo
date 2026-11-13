@@ -50,6 +50,7 @@ export function toMovementDto(entry: MovementWithLegs): MovementDto {
     cancelledAt: movement.cancelledAt ? movement.cancelledAt.toISOString() : null,
     cancelledReason: movement.cancelledReason,
     legs: legs.map((leg) => ({ id: leg.id, resourceId: leg.resourceId, amountCents: leg.amountCents })),
+    installment: movement.installment && { number: movement.installment.number, count: movement.installment.count },
     // A chave de acesso fica no banco; a tela não precisa dela.
     fuel: fuel && {
       fuelType: fuel.fuelType,
