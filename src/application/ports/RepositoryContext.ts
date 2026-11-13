@@ -3,6 +3,7 @@ import {
   CategoryRepository,
   CreditInvoiceRepository,
   FinancingRepository,
+  FuelDetailsRepository,
   LocalIdentityRepository,
   MembershipRepository,
   MovementRepository,
@@ -25,4 +26,5 @@ export interface RepositoryContext {
   auditLogs: AuditLogRepository;
   creditInvoices: CreditInvoiceRepository;
   financings: FinancingRepository;
+  fuelDetails: FuelDetailsRepository;
 }

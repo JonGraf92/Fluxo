@@ -101,6 +101,7 @@ export function mapCategory(row: Selectable<CategoriesTable>): Category {
     name: row.name,
     kind: row.kind as CategoryKind,
     isSystem: toBool(Number(row.is_system)),
+    systemKey: (row.system_key as Category['systemKey']) ?? null,
     createdAt: fromIso(row.created_at),
   };
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CategoryDto, MemberDto, MovementDto, ResourceDto } from '../../../src/shared/ipc-contract';
 import { formatCentsToBRL } from '../../services/money';
+import { FuelSummary } from './fuelFormat';
 
 interface MovementsTableProps {
   movements: MovementDto[];
@@ -63,6 +64,7 @@ export function MovementsTable({ movements, resources, categories, members, onCa
                   <td rowSpan={movement.legs.length}>
                     {movement.description}
                     {isCancelled ? ' (cancelado)' : ''}
+                    {movement.fuel ? <FuelSummary fuel={movement.fuel} /> : null}
                   </td>
                   <td rowSpan={movement.legs.length}>
                     <span className={TYPE_PILL_CLASS[movement.type]}>{TYPE_LABEL[movement.type]}</span>

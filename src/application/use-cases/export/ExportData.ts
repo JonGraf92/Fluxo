@@ -41,6 +41,7 @@ export class ExportData {
       movements,
       legs,
       adjustments,
+      fuelDetails: await this.repos.fuelDetails.listByMovementIds(movements.map((movement) => movement.id)),
       exportedAt: new Date(),
     };
 

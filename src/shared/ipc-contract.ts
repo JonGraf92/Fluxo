@@ -190,11 +190,22 @@ export const CreateIncomeSchema = z.object({ ...MovementCommonSchema, resourceId
 export type CreateIncomePayload = z.infer<typeof CreateIncomeSchema>;
 
 export const PaymentMethodSchema = z.enum(['DEBIT', 'PIX', 'BENEFIT', 'CREDIT']);
+/**
+ * Detalhes de abastecimento digitados pelo usuário (ADR D-038). Posto, CNPJ, impostos e
+ * chave de acesso NÃO existem aqui de propósito: só a captura de nota fiscal, no processo
+ * main, pode afirmá-los. O renderer não consegue se passar por uma nota da SEFAZ.
+ */
+export const FuelInputSchema = z.object({
+  fuelType: z.enum(['GASOLINE', 'ETHANOL', 'DIESEL', 'CNG']).nullable().optional(),
+  pricePerLiterMillis: z.number().int().positive().max(99_999).nullable().optional(),
+  odometerKm: z.number().int().min(0).max(9_999_999).nullable().optional(),
+}).strict();
 export const CreateExpenseSchema = z.object({
   ...MovementCommonSchema,
   resourceId: z.string().uuid(),
   paymentMethod: PaymentMethodSchema.optional(),
   invoiceDueDate: IsoDateSchema.nullable().optional(),
+  fuel: FuelInputSchema.nullable().optional(),
 }).strict();
 export type CreateExpensePayload = z.infer<typeof CreateExpenseSchema>;
 
@@ -346,6 +357,23 @@ export interface CategoryDto {
   name: string;
   kind: 'INCOME' | 'EXPENSE';
   isSystem: boolean;
+  /** 'FUEL' na categoria Combustível; null nas categorias sem regra própria. */
+  systemKey: string | null;
+}
+
+export interface FuelDetailsDto {
+  fuelType: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'CNG' | null;
+  /** Milésimos de real por litro: R$ 5,799 = 5799. */
+  pricePerLiterMillis: number | null;
+  /** Mililitros: do documento ou derivado de valor ÷ preço. */
+  quantityMl: number | null;
+  odometerKm: number | null;
+  stationName: string | null;
+  stationCnpj: string | null;
+  stationAddress: string | null;
+  taxTotalCents: number | null;
+  taxes: { taxCode: string; amountCents: number }[];
+  provenance: 'MANUAL' | 'QR_SEFAZ' | 'OCR';
 }
 
 export interface MovementLegDto {
@@ -368,6 +396,7 @@ export interface MovementDto {
   cancelledAt: string | null;
   cancelledReason: string | null;
   legs: MovementLegDto[];
+  fuel: FuelDetailsDto | null;
 }
 
 export interface DashboardResourceDto {

@@ -61,6 +61,28 @@ export interface CategoriesTable {
   kind: string;
   is_system: ColumnType<number, number | boolean, number | boolean>;
   created_at: string;
+  /** Chave de categoria reconhecida pelo código (ADR D-038); nula nas demais. */
+  system_key: string | null;
+}
+
+export interface FuelDetailsTable {
+  movement_id: string;
+  fuel_type: string | null;
+  price_per_liter_millis: number | null;
+  quantity_ml: number | null;
+  odometer_km: number | null;
+  station_name: string | null;
+  station_cnpj: string | null;
+  station_address: string | null;
+  tax_total_cents: number | null;
+  provenance: string;
+  access_key: string | null;
+}
+
+export interface FuelDetailTaxesTable {
+  movement_id: string;
+  tax_code: string;
+  amount_cents: number;
 }
 
 export interface MovementsTable {
@@ -182,4 +204,6 @@ export interface Database {
   credit_invoices: CreditInvoicesTable;
   financing_plans: FinancingPlansTable;
   financing_installments: FinancingInstallmentsTable;
+  fuel_details: FuelDetailsTable;
+  fuel_detail_taxes: FuelDetailTaxesTable;
 }

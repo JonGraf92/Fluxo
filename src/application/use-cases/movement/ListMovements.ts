@@ -1,3 +1,4 @@
+import { FuelDetails } from '../../../domain/entities/FuelDetails';
 import { Movement } from '../../../domain/entities/Movement';
 import { MovementLeg } from '../../../domain/entities/MovementLeg';
 import { MovementFilter } from '../../ports/repositories';
@@ -6,6 +7,8 @@ import { RepositoryContext } from '../../ports/RepositoryContext';
 export interface MovementWithLegs {
   movement: Movement;
   legs: MovementLeg[];
+  /** Detalhes do abastecimento, quando houver (ADR D-038). */
+  fuel: FuelDetails | null;
 }
 
 /** Junta cada movimento às suas partidas. Usado pela listagem e pelo painel. */
@@ -17,7 +20,12 @@ export async function attachLegs(repos: RepositoryContext, movements: Movement[]
     list.push(leg);
     legsByMovement.set(leg.movementId, list);
   }
-  return movements.map((movement) => ({ movement, legs: legsByMovement.get(movement.id) ?? [] }));
+  const fuelByMovement = new Map((await repos.fuelDetails.listByMovementIds(movements.map((m) => m.id))).map((fuel) => [fuel.movementId, fuel]));
+  return movements.map((movement) => ({
+    movement,
+    legs: legsByMovement.get(movement.id) ?? [],
+    fuel: fuelByMovement.get(movement.id) ?? null,
+  }));
 }
 
 /** Leitura simples — não precisa de transação, só de uma foto consistente do banco. */

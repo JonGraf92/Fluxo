@@ -9,6 +9,9 @@ import { useToast } from '../../design-system/Toast';
 import { api, newOperationId } from '../../services/api';
 import { formatCentsToBRL, todayIsoDate } from '../../services/money';
 import { firstEligibleInvoiceDueDate } from '../../../src/domain/services/CreditInvoiceCycle';
+import { fuelQuantityMl } from '../../../src/domain/entities/FuelDetails';
+import { parseLiterPriceToMillis } from '../../../src/shared/liter-price-parsing';
+import { FUEL_TYPE_LABELS, formatLiters } from './fuelFormat';
 
 function nextInvoiceDueDate(dueDay = 10): string {
   const now = new Date();
@@ -140,8 +143,15 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
   const [date, setDate] = React.useState(todayIsoDate());
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [fuelType, setFuelType] = React.useState('');
+  const [literPriceText, setLiterPriceText] = React.useState('');
+  const [odometerText, setOdometerText] = React.useState('');
 
   const expenseCategories = categories.filter((c) => c.kind === 'EXPENSE');
+  // Combustível é reconhecido pela chave da categoria, não pelo nome (ADR D-038).
+  const isFuel = expenseCategories.find((c) => c.id === categoryId)?.systemKey === 'FUEL';
+  const literPriceMillis = literPriceText.trim() ? parseLiterPriceToMillis(literPriceText) : null;
+  const litersMl = amountCents && literPriceMillis ? fuelQuantityMl(amountCents, { quantityMl: null, pricePerLiterMillis: literPriceMillis }) : null;
   const validResources = resources.filter((resource) => {
     if (paymentMethod === 'BENEFIT') return resource.type === 'BENEFIT';
     if (paymentMethod === 'CREDIT') return resource.type === 'CREDIT_CARD';
@@ -173,6 +183,9 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
     if (!description.trim()) return setError('Descreva a saída.');
     if (!resourceId) return setError(paymentMethod === 'CREDIT' ? 'Cadastre e escolha o cartão de crédito.' : paymentMethod === 'BENEFIT' ? 'Cadastre e escolha um benefício VR/VA.' : 'Escolha a conta de onde sairá o pagamento.');
     if (paymentMethod === 'CREDIT' && !invoiceDueDate) return setError('Escolha a fatura desta compra.');
+    const odometerKm = odometerText.trim() ? Number(odometerText) : null;
+    if (isFuel && literPriceText.trim() && literPriceMillis === null) return setError('Informe o preço por litro no formato 5,799.');
+    if (isFuel && odometerKm !== null && (!Number.isInteger(odometerKm) || odometerKm < 0)) return setError('Informe o hodômetro em quilômetros inteiros.');
     setSubmitting(true);
     setError(null);
     try {
@@ -186,6 +199,7 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
         date,
         paymentMethod,
         invoiceDueDate: paymentMethod === 'CREDIT' ? invoiceDueDate : null,
+        ...(isFuel ? { fuel: { fuelType: (fuelType || null) as 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'CNG' | null, pricePerLiterMillis: literPriceMillis, odometerKm } } : {}),
         clientOperationId: newOperationId(),
       });
       show('Saída registrada.');
@@ -223,6 +237,19 @@ export function NewExpenseModal({ session, resources, categories, members, onClo
           placeholder="Sem categoria"
           options={expenseCategories.map((c) => ({ value: c.id, label: c.name }))}
         />
+        {isFuel && (
+          <>
+            <Select label="Combustível (opcional)" value={fuelType} onChange={setFuelType} placeholder="Não informar" options={Object.entries(FUEL_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <Input label="Preço por litro (opcional)" inputMode="decimal" value={literPriceText} onChange={(e) => setLiterPriceText(e.target.value)} placeholder="5,799" hint={litersMl ? `≈ ${formatLiters(litersMl)} abastecidos` : undefined} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Input label="Hodômetro em km (opcional)" type="number" min={0} step={1} value={odometerText} onChange={(e) => setOdometerText(e.target.value)} placeholder="45210" />
+              </div>
+            </div>
+          </>
+        )}
         <Select
           label="Responsável"
           value={responsiblePersonId}

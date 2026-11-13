@@ -1,6 +1,7 @@
 import { Adjustment } from '../../domain/entities/Adjustment';
 import { Category } from '../../domain/entities/Category';
 import { FinancialNucleus } from '../../domain/entities/FinancialNucleus';
+import { FuelDetails } from '../../domain/entities/FuelDetails';
 import { Movement } from '../../domain/entities/Movement';
 import { MovementLeg } from '../../domain/entities/MovementLeg';
 import { Resource } from '../../domain/entities/Resource';
@@ -17,5 +18,7 @@ export interface ExportSnapshot {
   movements: Movement[];
   legs: MovementLeg[];
   adjustments: Adjustment[];
+  /** Detalhes de abastecimento (ADR D-038), ligados ao movimento por movementId. */
+  fuelDetails: FuelDetails[];
   exportedAt: Date;
 }

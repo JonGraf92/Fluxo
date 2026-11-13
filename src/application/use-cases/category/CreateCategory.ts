@@ -25,6 +25,7 @@ export class CreateCategory {
         name: input.name.trim(),
         kind: input.kind,
         isSystem: false,
+        systemKey: null,
         createdAt: new Date(),
       };
       await repos.categories.create(category);

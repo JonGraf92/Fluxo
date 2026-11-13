@@ -16,6 +16,7 @@ export class KyselyCategoryRepository implements CategoryRepository {
         name: category.name,
         kind: category.kind,
         is_system: toDbBool(category.isSystem),
+        system_key: category.systemKey,
         created_at: toIso(category.createdAt),
       })
       .execute();
@@ -32,6 +33,7 @@ export class KyselyCategoryRepository implements CategoryRepository {
           name: category.name,
           kind: category.kind,
           is_system: toDbBool(category.isSystem),
+          system_key: category.systemKey,
           created_at: toIso(category.createdAt),
         })),
       )

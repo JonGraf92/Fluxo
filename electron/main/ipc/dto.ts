@@ -1,4 +1,5 @@
 import { Category } from '../../../src/domain/entities/Category';
+import { fuelQuantityMl } from '../../../src/domain/entities/FuelDetails';
 import { Resource } from '../../../src/domain/entities/Resource';
 import {
   CategoryDto,
@@ -29,11 +30,12 @@ export function toCategoryDto(category: Category): CategoryDto {
     name: category.name,
     kind: category.kind,
     isSystem: category.isSystem,
+    systemKey: category.systemKey,
   };
 }
 
 export function toMovementDto(entry: MovementWithLegs): MovementDto {
-  const { movement, legs } = entry;
+  const { movement, legs, fuel } = entry;
   return {
     id: movement.id,
     nucleusId: movement.nucleusId,
@@ -48,5 +50,18 @@ export function toMovementDto(entry: MovementWithLegs): MovementDto {
     cancelledAt: movement.cancelledAt ? movement.cancelledAt.toISOString() : null,
     cancelledReason: movement.cancelledReason,
     legs: legs.map((leg) => ({ id: leg.id, resourceId: leg.resourceId, amountCents: leg.amountCents })),
+    // A chave de acesso fica no banco; a tela não precisa dela.
+    fuel: fuel && {
+      fuelType: fuel.fuelType,
+      pricePerLiterMillis: fuel.pricePerLiterMillis,
+      quantityMl: fuelQuantityMl(legs[0]?.amountCents ?? 0, fuel),
+      odometerKm: fuel.odometerKm,
+      stationName: fuel.stationName,
+      stationCnpj: fuel.stationCnpj,
+      stationAddress: fuel.stationAddress,
+      taxTotalCents: fuel.taxTotalCents,
+      taxes: fuel.taxes.map((tax) => ({ taxCode: tax.taxCode, amountCents: tax.amountCents })),
+      provenance: fuel.provenance,
+    },
   };
 }

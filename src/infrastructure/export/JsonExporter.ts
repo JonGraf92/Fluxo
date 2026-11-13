@@ -12,6 +12,7 @@ export function exportToJson(snapshot: ExportSnapshot): string {
       movements: snapshot.movements,
       legs: snapshot.legs,
       adjustments: snapshot.adjustments,
+      fuelDetails: snapshot.fuelDetails,
     },
     null,
     2,

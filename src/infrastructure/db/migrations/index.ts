@@ -11,6 +11,7 @@ import * as m0009 from './0009_financing_schedules';
 import * as m0010 from './0010_card_closing_day';
 import * as m0011 from './0011_card_invoice_reference';
 import * as m0012 from './0012_loans';
+import * as m0013 from './0013_fuel_details';
 
 /**
  * Provider em código (não em disco) — funciona igual em dev e em app empacotado (asar),
@@ -31,6 +32,7 @@ export class InCodeMigrationProvider implements MigrationProvider {
       '0010_card_closing_day': m0010,
       '0011_card_invoice_reference': m0011,
       '0012_loans': m0012,
+      '0013_fuel_details': m0013,
     };
   }
 }

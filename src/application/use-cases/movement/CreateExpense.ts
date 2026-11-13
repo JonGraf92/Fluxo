@@ -1,3 +1,4 @@
+import { FuelType } from '../../../domain/entities/FuelDetails';
 import { DomainError, NotFoundError } from '../../../domain/errors/DomainError';
 import { planExpenseLeg } from '../../../domain/services/LegFactory';
 import { Money } from '../../../domain/value-objects/Money';
@@ -18,6 +19,8 @@ export interface CreateExpenseInput {
   responsiblePersonId?: string;
   paymentMethod?: PaymentMethod;
   invoiceDueDate?: string | null;
+  /** Só na categoria Combustível (ADR D-038). Digitação manual: o resto vem de nota fiscal. */
+  fuel?: { fuelType?: FuelType | null; pricePerLiterMillis?: number | null; odometerKm?: number | null } | null;
   clientOperationId: string;
 }
 
@@ -52,14 +55,25 @@ export async function createExpenseInRepositories(repos: RepositoryContext, inpu
         throw new DomainError('RESOURCE_ARCHIVED', 'Não é possível lançar em um recurso arquivado.');
       }
 
+      const category = input.categoryId ? await repos.categories.findById(input.categoryId) : null;
       if (input.categoryId) {
-        const category = await repos.categories.findById(input.categoryId);
         if (!category || category.nucleusId !== input.nucleusId) {
           throw new NotFoundError('Categoria', input.categoryId);
         }
         if (category.kind !== 'EXPENSE') {
           throw new DomainError('CATEGORY_KIND_MISMATCH', 'Esta categoria não é de saída.');
         }
+      }
+
+      const fuelInput = {
+        fuelType: input.fuel?.fuelType ?? null,
+        pricePerLiterMillis: input.fuel?.pricePerLiterMillis ?? null,
+        odometerKm: input.fuel?.odometerKm ?? null,
+      };
+      const hasFuel = fuelInput.fuelType !== null || fuelInput.pricePerLiterMillis !== null || fuelInput.odometerKm !== null;
+      // A categoria é reconhecida pela chave, nunca pelo nome (ADR D-032).
+      if (hasFuel && category?.systemKey !== 'FUEL') {
+        throw new DomainError('FUEL_DETAILS_NOT_ALLOWED', 'Preço por litro e hodômetro só existem na categoria Combustível.');
       }
 
       const responsiblePersonId = input.responsiblePersonId ?? input.createdByPersonId;
@@ -120,6 +134,12 @@ export async function createExpenseInRepositories(repos: RepositoryContext, inpu
       const legs = buildLegs(movement.id, [legPlan]);
 
       await repos.movements.createWithLegs(movement, legs);
+      if (hasFuel) {
+        await repos.fuelDetails.save({
+          movementId: movement.id, ...fuelInput, quantityMl: null, stationName: null, stationCnpj: null,
+          stationAddress: null, taxTotalCents: null, taxes: [], provenance: 'MANUAL', accessKey: null,
+        });
+      }
       await repos.auditLogs.record(
         buildAuditLog({
           entityType: 'Movement',

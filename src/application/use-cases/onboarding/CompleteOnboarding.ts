@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { Category, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../../../domain/entities/Category';
+import { buildDefaultCategories, Category } from '../../../domain/entities/Category';
 import { FinancialNucleus } from '../../../domain/entities/FinancialNucleus';
 import { LocalIdentity, LOCAL_IDENTITY_SINGLETON_ID } from '../../../domain/entities/LocalIdentity';
 import { Membership } from '../../../domain/entities/Membership';
@@ -90,24 +90,7 @@ export class CompleteOnboarding {
       };
       await repos.memberships.create(ownerMembership);
 
-      const categories: Category[] = [
-        ...DEFAULT_INCOME_CATEGORIES.map((name) => ({
-          id: uuid(),
-          nucleusId: nucleus.id,
-          name,
-          kind: 'INCOME' as const,
-          isSystem: true,
-          createdAt: now,
-        })),
-        ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
-          id: uuid(),
-          nucleusId: nucleus.id,
-          name,
-          kind: 'EXPENSE' as const,
-          isSystem: true,
-          createdAt: now,
-        })),
-      ];
+      const categories: Category[] = buildDefaultCategories(nucleus.id, now, uuid);
       await repos.categories.createMany(categories);
 
       const resource: Resource = {

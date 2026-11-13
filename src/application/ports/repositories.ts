@@ -2,6 +2,7 @@ import { Adjustment } from '../../domain/entities/Adjustment';
 import { AuditLog } from '../../domain/entities/AuditLog';
 import { Category } from '../../domain/entities/Category';
 import { FinancialNucleus } from '../../domain/entities/FinancialNucleus';
+import { FuelDetails } from '../../domain/entities/FuelDetails';
 import { FinancingInstallment, FinancingPlan, FinancingPlanWithInstallments } from '../../domain/entities/Financing';
 import { LocalIdentity } from '../../domain/entities/LocalIdentity';
 import { Membership } from '../../domain/entities/Membership';
@@ -61,6 +62,12 @@ export interface CategoryRepository {
   createMany(categories: Category[]): Promise<void>;
   listByNucleus(nucleusId: string): Promise<Category[]>;
   findById(id: string): Promise<Category | null>;
+}
+
+export interface FuelDetailsRepository {
+  /** Recusa detalhe inválido e nota fiscal (chave de acesso) já lançada. */
+  save(details: FuelDetails): Promise<void>;
+  listByMovementIds(movementIds: string[]): Promise<FuelDetails[]>;
 }
 
 export interface MovementFilter {

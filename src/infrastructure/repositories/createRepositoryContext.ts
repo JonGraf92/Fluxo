@@ -5,6 +5,7 @@ import { KyselyAuditLogRepository } from './KyselyAuditLogRepository';
 import { KyselyCategoryRepository } from './KyselyCategoryRepository';
 import { KyselyCreditInvoiceRepository } from './KyselyCreditInvoiceRepository';
 import { KyselyFinancingRepository } from './KyselyFinancingRepository';
+import { KyselyFuelDetailsRepository } from './KyselyFuelDetailsRepository';
 import { KyselyLocalIdentityRepository } from './KyselyLocalIdentityRepository';
 import { KyselyMembershipRepository } from './KyselyMembershipRepository';
 import { KyselyMovementRepository } from './KyselyMovementRepository';
@@ -31,5 +32,6 @@ export function createRepositoryContext(executor: Kysely<Database>): RepositoryC
     auditLogs: new KyselyAuditLogRepository(executor),
     creditInvoices: new KyselyCreditInvoiceRepository(executor),
     financings: new KyselyFinancingRepository(executor),
+    fuelDetails: new KyselyFuelDetailsRepository(executor),
   };
 }
